@@ -1,0 +1,85 @@
+// Define the base URL for the API
+// In development, we use the Next.js proxy (/api/py) which forwards to localhost:8000
+// In production, we might use a direct URL or keeping the proxy
+const BASE_URL = "/api/py";
+
+export class ApiClient {
+  private static instance: ApiClient;
+  private baseUrl: string;
+
+  private constructor() {
+    this.baseUrl = BASE_URL;
+  }
+
+  public static getInstance(): ApiClient {
+    if (!ApiClient.instance) {
+      ApiClient.instance = new ApiClient();
+    }
+    return ApiClient.instance;
+  }
+
+  private async fetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    const url = `${this.baseUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+    
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`API call failed: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  public async getPortfolioStats() {
+    return this.fetch<{
+      equity: number;
+      buying_power: number;
+      day_change_percent: number;
+    }>("/portfolio/stats");
+  }
+
+  public async getPositions() {
+    return this.fetch<{
+      positions: Array<{
+        ticker: string;
+        qty: number;
+        market_value: number;
+        cost_basis: number;
+        unrealized_pl: number;
+        unrealized_plpc: number;
+      }>;
+    }>("/portfolio/positions");
+  }
+
+  public async getMarketStatus() {
+    return this.fetch<{ is_open: boolean; next_open: string }>("/market-status");
+  }
+  
+  public async getFactorAnalysis(ticker: string) {
+    return this.fetch<{
+      value_score: number;
+      quality_score: number;
+      momentum_score: number;
+      growth_score: number;
+      risk_score: number;
+    }>(`/analysis/factors/${ticker}`);
+  }
+
+  public streamAnalysis(ticker: string): EventSource {
+    const url = `${this.baseUrl}/analysis/stream/${ticker}`;
+    return new EventSource(url);
+  }
+
+  // Health check for the backend
+  public async getHealth() {
+    return this.fetch<{ status: string; services: Record<string, string> }>("/health");
+  }
+}
+
+export const api = ApiClient.getInstance();
