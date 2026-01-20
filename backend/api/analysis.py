@@ -49,7 +49,7 @@ async def stream_analysis_ticker(ticker: str):
         # Simple handler to add updates to the queue (thread-safe)
         def progress_handler(agent_name, agent_ticker, status, analysis, timestamp):
             # Log to console for debugging
-            print(f"Stream Update: {agent_name} -> {status} ({agent_ticker or 'Global'})")
+            # print(f"DEBUG: Stream Update Triggered: {agent_name} -> {status} ({agent_ticker or 'Global'})")
 
             # Match logic: if 'GLOBAL' requested, send EVERYTHING. 
             # Otherwise only send matches for this ticker OR system updates.
@@ -62,29 +62,47 @@ async def stream_analysis_ticker(ticker: str):
                 # Map internal agent names to frontend AGENTS keys
                 name_map = {
                     "warren_buffett_agent": "Buffett",
+                    "warren_buffett": "Buffett",
                     "cathie_wood_agent": "Wood",
+                    "cathie_wood": "Wood",
                     "charlie_munger_agent": "Munger",
+                    "charlie_munger": "Munger",
                     "phil_fisher_agent": "Fisher",
+                    "phil_fisher": "Fisher",
                     "bill_ackman_agent": "Ackman",
+                    "bill_ackman": "Ackman",
                     "michael_burry_agent": "Burry",
+                    "michael_burry": "Burry",
                     "ben_graham_agent": "Graham",
+                    "ben_graham": "Graham",
                     "peter_lynch_agent": "Lynch",
+                    "peter_lynch": "Lynch",
                     "stanley_druckenmiller_agent": "Druckenmiller",
+                    "stanley_druckenmiller": "Druckenmiller",
                     "aswath_damodaran_agent": "Damodaran",
+                    "aswath_damodaran": "Damodaran",
                     "mohnish_pabrai_agent": "Pabrai",
+                    "mohnish_pabrai": "Pabrai",
                     "rakesh_jhunjhunwala_agent": "Jhunjhunwala",
+                    "rakesh_jhunjhunwala": "Jhunjhunwala",
                     "portfolio_manager": "PortfolioManager",
                     "risk_management_agent": "RiskManager",
                     "technical_analyst_agent": "TechnicalAnalyst",
+                    "technical_analyst": "TechnicalAnalyst",
                     "fundamentals_analyst_agent": "FundamentalAnalyst",
+                    "fundamentals_analyst": "FundamentalAnalyst",
                     "sentiment_analyst_agent": "SentimentAnalyst",
+                    "sentiment_analyst": "SentimentAnalyst",
                     "news_sentiment_analyst_agent": "SentimentAnalyst",
+                    "news_sentiment_analyst": "SentimentAnalyst",
                     "growth_analyst_agent": "FundamentalAnalyst",
+                    "growth_analyst": "FundamentalAnalyst",
                     "valuation_analyst_agent": "Damodaran",
+                    "valuation_analyst": "Damodaran",
                     "quant_engine": "TechnicalAnalyst",
                 }
 
-                display_name = name_map.get(agent_name, agent_name.replace("_agent", "").title().replace(" ", ""))
+                display_name = name_map.get(agent_name, agent_name.replace("_agent", "").title().replace(" ", "").replace("_", ""))
 
                 # Format for the frontend expectations in LiveDebateFloor.tsx
                 # LiveDebateFloor expects: { agent, signal, score, content, timestamp }
@@ -105,7 +123,6 @@ async def stream_analysis_ticker(ticker: str):
 
                         if data:
                             # If it's a ticker-mapped dict, get our ticker's data
-                            # Use agent_ticker if available, otherwise fallback to ticker
                             lookup_ticker = agent_ticker if agent_ticker and agent_ticker != "GLOBAL" else (ticker if ticker != "GLOBAL" else None)
                             
                             ticker_data = data.get(lookup_ticker) if lookup_ticker and isinstance(data, dict) else data
@@ -115,7 +132,6 @@ async def stream_analysis_ticker(ticker: str):
                                 score = ticker_data.get("score", score)
                                 confidence = ticker_data.get("confidence", 0)
                                 magnitude = ticker_data.get("magnitude", 0)
-                                # Use reasoning or style_rationale if available, otherwise keep status
                                 content = ticker_data.get("reasoning") or ticker_data.get("style_rationale") or status
                             else:
                                 content = str(analysis)
@@ -134,28 +150,37 @@ async def stream_analysis_ticker(ticker: str):
                     "confidence": confidence,
                     "magnitude": magnitude,
                     "timestamp": timestamp,
-                    # Placeholders for future enriched DTOs
                     "insight": None,
                     "target": None,
                     "risk": None,
                     "execution": None
                 }
-                loop.call_soon_threadsafe(progress_queue.put_nowait, f"data: {json.dumps(payload)}\n\n")
+                # Wrap in EventSource format
+                sse_data = f"event: message\ndata: {json.dumps(payload)}\n\n"
+                loop.call_soon_threadsafe(progress_queue.put_nowait, sse_data)
 
         # Register our handler
         progress.register_handler(progress_handler)
 
         try:
-            # Send a large comment to bypass any intermediate proxy buffers (e.g. 2KB)
+            # Send initial bypass comment
             yield f": {' ' * 2048}\n\n"
 
             # Start initial event
-            yield f"data: {json.dumps({'schema_version': '1.0', 'agent': 'system', 'content': f'Initializing stream for {ticker}...', 'signal': 'NEUTRAL', 'score': 50, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
+            initial_payload = {
+                "schema_version": "1.0", 
+                "agent": "system", 
+                "content": f"Initializing stream for {ticker}...", 
+                "signal": "NEUTRAL", 
+                "score": 50, 
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            yield f"event: message\ndata: {json.dumps(initial_payload)}\n\n"
 
-            # Confirm engine is active via the progress handler
+            # Confirm engine is active
             progress.update_status("system", ticker, "Framework Engine Active")
 
-            # If ticker is GLOBAL, use a default set of tickers for the run
+            # Execution Tickers
             execution_tickers = [ticker] if ticker != "GLOBAL" else ["AAPL", "NVDA", "MSFT"]
 
             # Start graph execution in background
@@ -183,21 +208,42 @@ async def stream_analysis_ticker(ticker: str):
                     print(f"SSE Queue Error: {e}")
                     await asyncio.sleep(0.1)
 
-            # Wait for final result to ensure everything is done
+            # Wait for final result
             try:
                 await run_task
-                print(f"Analysis Graph Complete for {ticker}")
             except Exception as e:
-                print(f"Graph Execution Error: {e}")
-                yield f"data: {json.dumps({'schema_version': '1.0', 'agent': 'system', 'content': f'Execution Error: {str(e)}', 'signal': 'NEUTRAL', 'score': 50, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
+                err_payload = {
+                    "schema_version": "1.0", 
+                    "agent": "system", 
+                    "content": f"Execution Error: {str(e)}", 
+                    "signal": "NEUTRAL", 
+                    "score": 50, 
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                yield f"event: message\ndata: {json.dumps(err_payload)}\n\n"
 
             # Final Done signal
-            yield "data: [DONE]\n\n"
+            yield "event: message\ndata: [DONE]\n\n"
 
         except Exception as e:
-            err_payload = {"schema_version": "1.0", "agent": "system", "content": f"Error: {str(e)}", "signal": "NEUTRAL", "score": 50, "timestamp": datetime.now(timezone.utc).isoformat()}
-            yield f"data: {json.dumps(err_payload)}\n\n"
+            err_payload = {
+                "schema_version": "1.0", 
+                "agent": "system", 
+                "content": f"Critical Stream Error: {str(e)}", 
+                "signal": "NEUTRAL", 
+                "score": 50, 
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            yield f"event: message\ndata: {json.dumps(err_payload)}\n\n"
         finally:
             progress.unregister_handler(progress_handler)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream", 
+        headers={
+            "Cache-Control": "no-cache", 
+            "Connection": "keep-alive", 
+            "X-Accel-Buffering": "no"
+        }
+    )
