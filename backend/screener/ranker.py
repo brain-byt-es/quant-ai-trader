@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import List, Dict, Any, cast
 from pydantic import BaseModel
+import math
 
 class RankingResult(BaseModel):
     base_count: int
@@ -72,22 +73,22 @@ def get_ranking_result(
     df_ranked["composite_score"] = composite_scores
     
     # 3. Select Top K
-    # top_k should be List[str]
     top_k = [str(s) for s in composite_scores.sort_values(ascending=False).head(k).index.tolist()]
     
     # 4. Prepare scores table for Top K
-    # Explicitly convert to Dict[str, Dict[str, float]] to satisfy Pylance
     top_k_df = df_ranked.loc[top_k]
     
-    # We must be very explicit to satisfy the linter's invariant dict requirement
     final_scores_table: Dict[str, Dict[str, float]] = {}
     
-    # Iterate through the DataFrame rows to build the nested dictionary manually
     for symbol_idx, row in top_k_df.iterrows():
         symbol_str = str(symbol_idx)
         factor_scores: Dict[str, float] = {}
         for factor_name, score_val in row.items():
-            factor_scores[str(factor_name)] = float(score_val)
+            # Institutional Guardrail: Ensure all scores are finite
+            f_val = float(score_val)
+            if not math.isfinite(f_val):
+                f_val = 0.0 # Coerce to zero to prevent downstream pollution
+            factor_scores[str(factor_name)] = f_val
         final_scores_table[symbol_str] = factor_scores
     
     return RankingResult(

@@ -1,4 +1,4 @@
-# 📈 AI Hedge Fund
+# 📈 QuantTrader (Institutional Refactor)
 
 <div align="center">
 
@@ -7,9 +7,9 @@
 ![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104.0-009688.svg)
 
-**An autonomous, multi-agent AI hedge fund trading system. Implements LEAN Algorithm Framework semantics (Insight → PortfolioTarget → Risk → Execution) in a custom FastAPI runtime.**
+**A professional systematic equity platform with a market-wide multi-factor screener, LEAN-faithful pipeline integration, and an institutionally-stable codebase.**
 
-[Features](#-key-features) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [Usage](#-usage) • [Contributing](#-contributing)
+[Features](#-key-features) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [Development](#-development)
 
 </div>
 
@@ -17,117 +17,83 @@
 
 ## 📖 Overview
 
-**AI Hedge Fund** is a research project exploring the capabilities of autonomous AI agents in financial markets. It simulates a hedge fund where multiple specialized AI agents—modeled after famous investors like Warren Buffett, Charlie Munger, and Michael Burry—collaborate to analyze market data, assess risk, and make trading decisions.
+**QuantTrader** is an autonomous, multi-agent AI hedge fund trading system. Unlike traditional "wrapper" projects, QuantTrader implements strict **LEAN Algorithm Framework** semantics (Insight → PortfolioTarget → Risk → Execution) within a modern FastAPI/Next.js stack.
 
-The system uses a **FastAPI** backend to orchestrate the agent workflow and a **Next.js** frontend to visualize the portfolio, agent interactions, and trading performance.
-
-> ⚠️ **Disclaimer:** This project is for **educational and research purposes only**. It is not intended for real trading or financial advice.
+This repository represents the **Institutional Refactor** phase, where the codebase was hardened for production-grade stability, modern SQLAlchemy 2.0 typing, and resilient LLM adapter patterns.
 
 ## 🌟 Key Features
 
-### 🤖 Multi-Agent System
-A collaborative network of specialized agents:
-- **Portfolio Managers**: Buffet, Munger, Ackman, Wood, etc.
-- **Analysts**: Fundamental, Technical, Sentiment, Valuation, Growth.
-- **Risk Manager**: Evaluates portfolio exposure and approves trades.
-- **Chief Investment Officer**: Orchestrates the overall strategy.
+### 🤖 Multi-Agent Systematic Logic
+- **Discovery (Screener):** Market-wide vectorized factor ranking (A: Mispricing, B: Momentum, C: Risk).
+- **Depth (Agents):** 19 specialized agents (Buffett, Munger, Burry, etc.) providing Bayesian prior updates.
+- **Allocation (MVO):** Institutional Mean-Variance Optimization for target weight generation.
+- **Risk (Institutional):** Regime-aware adaptive risk multipliers and "Kill Switch" safety protocols.
 
-### 🧠 Advanced AI Logic
-- Powered by **LangChain** and **LangGraph**.
-- Supports multiple LLM providers: OpenAI, Anthropic, DeepSeek, Groq, Google Gemini, and more.
-- Retrieval Augmented Generation (RAG) for financial data analysis.
+### 🧠 Hardened AI Orchestration
+- **Safe LLM Factory:** Runtime signature introspection to prevent library version drift crashes.
+- **Vectorized Screening:** Scalable multi-factor ranking computed using Pandas/NumPy.
+- **Type-Safe Pipeline:** Strict Pydantic V2 models ensuring contract integrity across the Alpha, Portfolio, and Risk layers.
 
 ### 📊 Modern Tech Stack
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy, Alembic.
-- **Frontend**: Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui.
-- **Data**: Integration with Financial Datasets AI, Yahoo Finance (via libraries).
-- **Trading**: Alpaca API integration (Paper/Live).
+- **Backend:** Python 3.13, FastAPI, SQLAlchemy 2.0 (Mapped/mapped_column), Alembic.
+- **Frontend:** Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui.
+- **Standards:** Ruff for high-performance linting, Mypy for static type verification.
 
 ## 🏗 Architecture
 
-The project is structured as a monorepo:
+The project is a flattened monolith optimized for developer velocity and static analysis:
 
 ```text
 /
-├── backend/            # FastAPI Application (Agents, API, Logic)
-│   ├── agents/         # AI Agent definitions (Buffett, Lynch, etc.)
-│   ├── api/            # REST API Endpoints
-│   ├── core/           # Workflow & Engine logic
-│   ├── services/       # External services (Alpaca, Data Providers)
+├── backend/            # FastAPI Application
+│   ├── agents/         # 19 specialized investment personas
+│   ├── core/           # Quant Engine & Regime Detection
+│   ├── screener/       # Vectorized ranking & factor analysis
+│   ├── lean_bridge/    # QuantConnect LEAN compatibility layer
+│   ├── database/       # SQLAlchemy 2.0 Models
 │   └── ...
-├── frontend/           # Next.js Application (UI/UX)
-│   ├── src/app/        # App Router Pages
-│   ├── src/components/ # UI Components (shadcn/ui)
-│   └── ...
-└── .env                # Centralized Environment Variables
+├── frontend/           # Next.js 15 Dashboard
+└── GEMINI.md           # Documentation of the Institutional Refactor
 ```
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- **Python 3.11+**
-- **Node.js 18+** & npm/yarn/pnpm
-- **Poetry** (for Python dependency management)
+- **Python 3.13+**
+- **Node.js 20+**
+- **Poetry**
 
-### 1. Clone the Repository
+### 1. Installation
 ```bash
-git clone https://github.com/virattt/ai-hedge-fund.git
-cd ai-hedge-fund
+# Backend
+cd backend && poetry install
+
+# Frontend
+cd ../frontend && npm install
 ```
 
-### 2. Configure Environment
-Create a `.env` file in the root directory and add your API keys.
+### 2. Environment Setup
 ```bash
-cp backend/.env.example .env
-```
-*Make sure to fill in your keys for OpenAI, Anthropic, Financial Datasets, etc.*
-
-### 3. Backend Setup
-```bash
-cd backend
-poetry install
+cp .env.example .env
+# Fill in credentials for Alpaca, Financial Datasets, and LLM Providers
 ```
 
-### 4. Frontend Setup
+### 3. Execution
 ```bash
-cd ../frontend
-npm install
-```
+# Backend
+poetry run uvicorn main:app --reload
 
-## 🖥 Usage
-
-Run the backend and frontend in separate terminal windows.
-
-### Start Backend
-```bash
-# From /backend directory
-poetry run uvicorn backend.main:app --reload
-```
-*API will be available at [http://localhost:8000](http://localhost:8000)*  
-*Docs at [http://localhost:8000/docs](http://localhost:8000/docs)*
-
-### Start Frontend
-```bash
-# From /frontend directory
+# Frontend
 npm run dev
 ```
-*UI will be available at [http://localhost:3000](http://localhost:3000)*
 
-## 🤝 Contributing
+## 🛡 Institutional Guardrails
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+- **Finite-Math Guards:** All vectorized operations are checked for NaN/Inf pollution before ranking.
+- **Signature Introspection:** LLM constructors are validated at runtime to ensure forward compatibility with vendor updates.
+- **Shadowing Protection:** Strict ruff rules prevent shadowing of Python built-ins.
 
 ---
 <div align="center">
-Built with ❤️ by open-source contributors.
+Built for professional systematic equity research.
 </div>
