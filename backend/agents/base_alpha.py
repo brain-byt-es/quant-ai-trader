@@ -1,3 +1,4 @@
+from lean_bridge.contracts import AlphaModel
 
-# This file now acts as a re-export or secondary entry point if needed, 
-# but AlphaModel base is defined in lean_bridge.contracts.
+# Re-export AlphaModel for backward compatibility with agents
+__all__ = ["AlphaModel"]
