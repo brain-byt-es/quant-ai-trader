@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-
-from typing import TypeVar, Type, cast, Any, Dict
+import logging
+from typing import TypeVar, Type, cast, Any, Dict, Optional
 
 from pydantic import BaseModel
 
@@ -12,6 +12,7 @@ from graph.state import AgentState
 from llm.models import get_model, get_model_info, ModelProvider
 from utils.progress import progress
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -25,81 +26,92 @@ def call_llm(
 ) -> T:
     """
     Makes an LLM call with retry logic, handling both JSON supported and non-JSON supported models.
-
-    Args:
-        prompt: The prompt to send to the LLM
-        pydantic_model: The Pydantic model class to structure the output
-        agent_name: Optional name of the agent for progress updates and model config extraction
-        state: Optional state object to extract agent-specific model configuration
-        max_retries: Maximum number of retries (default: 3)
-        default_factory: Optional factory function to create default response on failure
-
-    Returns:
-        An instance of the specified Pydantic model
     """
 
-    # Extract model configuration if state is provided and agent_name is available
+    # 1. Extract model configuration
     if state and agent_name:
-        model_name, model_provider = get_agent_model_config(state, agent_name)
+        model_name, model_provider_raw = get_agent_model_config(state, agent_name)
     else:
-        # Use system defaults when no state or agent_name is provided
-        model_name = "gpt-4.1"
-        model_provider = ModelProvider.OPENAI.value
+        # Respect global state if provided, otherwise default to OpenAI
+        model_name = state.get("metadata", {}).get("model_name") if state else "gpt-4.1"
+        model_provider_raw = state.get("metadata", {}).get("model_provider") if state else ModelProvider.OPENAI.value
 
-    # Extract API keys from state if available
+    # Normalize model_name and model_provider to str
+    model_name_str = str(model_name) if model_name else "gpt-4.1"
+    
+    # Handle model_provider which can be Enum, str, or None
+    if model_provider_raw is None:
+        model_provider_str = ModelProvider.OPENAI.value
+    elif hasattr(model_provider_raw, "value"):
+        model_provider_str = str(getattr(model_provider_raw, "value"))
+    else:
+        model_provider_str = str(model_provider_raw)
+
+    # 2. Extract API keys
     api_keys = None
     if state:
         request = state.get("metadata", {}).get("request")
         if request and hasattr(request, "api_keys"):
             api_keys = request.api_keys
 
-    model_info = get_model_info(model_name, model_provider)
-    llm = get_model(model_name, model_provider, api_keys)
+    model_info = get_model_info(model_name_str, model_provider_str)
+    llm = get_model(model_name_str, model_provider_str, api_keys)
 
     if llm is None:
-        print(f"Error: get_model returned None for {model_name} from {model_provider}")
+        logger.error(f"get_model returned None for {model_name_str} from {model_provider_str}")
         if default_factory:
             return default_factory()
-        return cast(T, create_default_response(pydantic_model))
+        return create_default_response(pydantic_model)
 
-    # For non-JSON support models, we can use structured output
-    if not (model_info and not model_info.has_json_mode()):
+    # 3. Schema Injection (Hardening)
+    # Append explicit schema requirements to the prompt to help non-strict models
+    schema_fields = list(pydantic_model.model_fields.keys())
+    schema_prompt = f"\n\nIMPORTANT: Your output MUST be a JSON object with exactly these keys: {schema_fields}. Do not include any extra keys or conversational text."
+    
+    if hasattr(prompt, "to_string"):
+        prompt_text = prompt.to_string() + schema_prompt
+    else:
+        prompt_text = str(prompt) + schema_prompt
+
+    # 4. Prepare Model with Structured Output
+    if model_info and model_info.has_json_mode():
         llm = llm.with_structured_output(
             pydantic_model,
             method="json_mode",
         )
 
-    # Call the LLM with retries
+    # 5. Call the LLM with retries
     for attempt in range(max_retries):
         try:
-            # Call the LLM
-            result = llm.invoke(prompt)
+            # result can be a Pydantic model or a BaseMessage
+            result = llm.invoke(prompt_text)
 
-            # For non-JSON support models, we need to extract and parse the JSON manually
-            if model_info and not model_info.has_json_mode():
-                # Ensure we extract from string content
-                # Use cast(Any, result) to bypass Pylance attribute access check
-                content = str(getattr(cast(Any, result), "content", result))
-                    
-                parsed_result = extract_json_from_response(content)
-                if parsed_result:
-                    return pydantic_model(**parsed_result)
-            else:
-                return cast(T, result)
+            # Case A: Model already returned parsed Pydantic model (LangChain handled it)
+            if isinstance(result, pydantic_model):
+                return result
+
+            # Case B: Manual extraction needed (for non-strict or non-JSON support models)
+            # Use getattr safely to get content
+            content = str(getattr(result, "content", result))
+                
+            parsed_result = extract_json_from_response(content)
+            if parsed_result:
+                # Pydantic V2 will handle the map_synonyms validator we added to types.py
+                return pydantic_model(**parsed_result)
+            
+            raise ValueError(f"Could not extract valid JSON from LLM response: {content[:200]}...")
 
         except Exception as e:
             if agent_name:
                 progress.update_status(agent_name, None, f"Error - retry {attempt + 1}/{max_retries}")
 
             if attempt == max_retries - 1:
-                print(f"Error in LLM call after {max_retries} attempts: {e}")
-                # Use default_factory if provided, otherwise create a basic default
+                logger.error(f"LLM Failure for {agent_name} after {max_retries} attempts: {e}")
                 if default_factory:
                     return default_factory()
-                return cast(T, create_default_response(pydantic_model))
+                return create_default_response(pydantic_model)
 
-    # This should never be reached due to the retry logic above
-    return cast(T, create_default_response(pydantic_model))
+    return create_default_response(pydantic_model)
 
 
 def create_default_response(model_class: Type[T]) -> T:
@@ -124,43 +136,55 @@ def create_default_response(model_class: Type[T]) -> T:
     return model_class(**default_values)
 
 
-def extract_json_from_response(content: str) -> dict | None:
+def extract_json_from_response(content: str) -> Optional[dict]:
     """Extracts JSON from markdown-formatted response."""
+    if not content:
+        return None
+        
     try:
+        # 1. Look for markdown blocks
         json_start = content.find("```json")
         if json_start != -1:
-            json_text = content[json_start + 7 :]  # Skip past ```json
+            json_text = content[json_start + 7 :]
             json_end = json_text.find("```")
             if json_end != -1:
-                json_text = json_text[:json_end].strip()
-                return json.loads(json_text)
+                return json.loads(json_text[:json_end].strip())
+        
+        # 2. Look for raw curly braces
+        json_start = content.find("{")
+        json_end = content.rfind("}")
+        if json_start != -1 and json_end != -1:
+            return json.loads(content[json_start : json_end + 1])
+            
     except Exception as e:
-        print(f"Error extracting JSON from response: {e}")
+        logger.warning(f"JSON Extraction Error: {e}")
     return None
 
 
-def get_agent_model_config(state, agent_name):
+def get_agent_model_config(state: AgentState, agent_name: str) -> tuple[str, str]:
     """
     Get model configuration for a specific agent from the state.
-    Falls back to global model configuration if agent-specific config is not available.
-    Always returns valid model_name and model_provider values.
     """
-    request = state.get("metadata", {}).get("request")
+    metadata = state.get("metadata", {})
+    request = metadata.get("request")
 
+    # 1. Check for Agent-Specific Override
     if request and hasattr(request, "get_agent_model_config"):
-        # Get agent-specific model configuration
         model_name, model_provider = request.get_agent_model_config(agent_name)
-        # Ensure we have valid values
         if model_name and model_provider:
-            return model_name, model_provider.value if hasattr(model_provider, "value") else str(model_provider)
+            provider_val = str(getattr(model_provider, "value", model_provider))
+            return str(model_name), provider_val
 
-    # Fall back to global configuration (system defaults)
-    model_name = state.get("metadata", {}).get("model_name") or "gpt-4.1"
-    model_provider = state.get("metadata", {}).get("model_provider") or ModelProvider.OPENAI.value
-
+    # 2. Check for Global Request Defaults
+    model_name = metadata.get("model_name")
+    model_provider = metadata.get("model_provider")
+    
+    if not model_name:
+        model_name = "gpt-4.1"
+    if not model_provider:
+        model_provider = ModelProvider.OPENAI.value
+        
     # Convert enum to string if necessary
-    # Use cast to Any to satisfy Pylance
-    if hasattr(model_provider, "value"):
-        model_provider = cast(Any, model_provider).value
+    provider_str = str(getattr(model_provider, "value", model_provider))
 
-    return model_name, str(model_provider)
+    return str(model_name), provider_str

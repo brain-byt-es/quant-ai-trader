@@ -153,6 +153,22 @@ def run_graph(
     start date, end date, show reasoning, model name,
     and model provider.
     """
+    # Prepare data dictionary
+    graph_data = {
+        "tickers": tickers,
+        "portfolio": portfolio,
+        "start_date": start_date,
+        "end_date": end_date,
+        "analyst_signals": {},
+    }
+    
+    # If this is a screener-based request, pass the market info
+    if request and isinstance(request, dict):
+        if "market" in request:
+            graph_data["market"] = request["market"]
+        if "k" in request:
+            graph_data["k"] = request["k"]
+
     try:
         print(f"Starting Graph Execution for tickers: {tickers}")
         return graph.invoke(
@@ -162,18 +178,12 @@ def run_graph(
                         content="Make trading decisions based on the provided data.",
                     )
                 ],
-                "data": {
-                    "tickers": tickers,
-                    "portfolio": portfolio,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "analyst_signals": {},
-                },
+                "data": graph_data,
                 "metadata": {
                     "show_reasoning": False,
                     "model_name": model_name,
                     "model_provider": model_provider,
-                    "request": request,  # Pass the request for agent-specific model access
+                    "request": request,
                 },
             },
         )

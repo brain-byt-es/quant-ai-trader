@@ -186,6 +186,20 @@ async def stream_analysis_ticker(ticker: str, market: Optional[str] = None, k: O
 
             # Start graph execution
             now = datetime.now(timezone.utc)
+            
+            # Guard against 'GLOBAL' ticker leaking into data providers
+            target_tickers = [ticker]
+            effective_market = market
+            effective_k = k
+            
+            if ticker == "GLOBAL" and not market:
+                # Default to US market screening if ticker is GLOBAL but no market specified
+                effective_market = "US"
+                effective_k = 10
+                target_tickers = []
+            elif ticker == "GLOBAL":
+                target_tickers = []
+
             run_params = {
                 "graph": graph,
                 "portfolio": {"cash": 100000.0, "positions": {}, "margin_requirement": 0.0, "realized_gains": {}},
@@ -193,13 +207,11 @@ async def stream_analysis_ticker(ticker: str, market: Optional[str] = None, k: O
                 "end_date": now.strftime("%Y-%m-%d"),
                 "model_name": "gpt-4.1",
                 "model_provider": "OpenAI",
+                "tickers": target_tickers
             }
             
-            if market and k:
-                run_params["tickers"] = [] # Engine will run screener
-                run_params["request"] = {"market": market, "k": k}
-            else:
-                run_params["tickers"] = [ticker]
+            if effective_market and effective_k:
+                run_params["request"] = {"market": effective_market, "k": effective_k}
                 
             run_task = asyncio.create_task(run_graph_async(**run_params))
 
