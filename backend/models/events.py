@@ -7,6 +7,7 @@ class BaseEvent(BaseModel):
     """Base class for all Server-Sent Event events"""
 
     type: str
+    schema_version: str = "1.0"
 
     def to_sse(self) -> str:
         """Convert to Server-Sent Event format"""
@@ -27,7 +28,7 @@ class ProgressUpdateEvent(BaseEvent):
     type: Literal["progress"] = "progress"
     agent: str
     ticker: Optional[str] = None
-    status: str
+    content: str
     timestamp: Optional[str] = None
     analysis: Optional[str] = None
 
@@ -36,7 +37,7 @@ class ErrorEvent(BaseEvent):
     """Event indicating an error occurred"""
 
     type: Literal["error"] = "error"
-    message: str
+    content: str
     timestamp: Optional[str] = None
 
 

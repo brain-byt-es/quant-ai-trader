@@ -156,7 +156,7 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
 
             # Simple handler to add updates to the queue (thread-safe)
             def progress_handler(agent_name, ticker, status, analysis, timestamp):
-                event = ProgressUpdateEvent(agent=agent_name, ticker=ticker, status=status, timestamp=timestamp, analysis=analysis)
+                event = ProgressUpdateEvent(agent=agent_name, ticker=ticker, content=status, timestamp=timestamp, analysis=analysis)
                 loop.call_soon_threadsafe(progress_queue.put_nowait, event)
 
             # Register our handler with the progress tracker
@@ -216,7 +216,7 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                     return
 
                 if not result or not result.get("messages"):
-                    yield ErrorEvent(message="Failed to generate hedge fund decisions").to_sse()
+                    yield ErrorEvent(content="Failed to generate hedge fund decisions").to_sse()
                     return
 
                 # Send the final result
@@ -314,13 +314,13 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
 
             # Global progress handler to capture individual agent updates during backtest (thread-safe)
             def progress_handler(agent_name, ticker, status, analysis, timestamp):
-                event = ProgressUpdateEvent(agent=agent_name, ticker=ticker, status=status, timestamp=timestamp, analysis=analysis)
+                event = ProgressUpdateEvent(agent=agent_name, ticker=ticker, content=status, timestamp=timestamp, analysis=analysis)
                 loop.call_soon_threadsafe(progress_queue.put_nowait, event)
 
             # Progress callback to handle backtest-specific updates (thread-safe)
             def progress_callback(update):
                 if update["type"] == "progress":
-                    event = ProgressUpdateEvent(agent="backtest", ticker=None, status=f"Processing {update['current_date']} ({update['current_step']}/{update['total_dates']})", timestamp=None, analysis=None)
+                    event = ProgressUpdateEvent(agent="backtest", ticker=None, content=f"Processing {update['current_date']} ({update['current_step']}/{update['total_dates']})", timestamp=None, analysis=None)
                     loop.call_soon_threadsafe(progress_queue.put_nowait, event)
                 elif update["type"] == "backtest_result":
                     # Convert day result to a streaming event
@@ -331,7 +331,7 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
 
                     analysis_data = json.dumps(update["data"])
 
-                    event = ProgressUpdateEvent(agent="backtest", ticker=None, status=f"Completed {backtest_result.date} - Portfolio: ${backtest_result.portfolio_value:,.2f}", timestamp=None, analysis=analysis_data)
+                    event = ProgressUpdateEvent(agent="backtest", ticker=None, content=f"Completed {backtest_result.date} - Portfolio: ${backtest_result.portfolio_value:,.2f}", timestamp=None, analysis=analysis_data)
                     loop.call_soon_threadsafe(progress_queue.put_nowait, event)
 
             # Register our handler with the progress tracker to capture agent updates
@@ -380,7 +380,7 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                     return
 
                 if not result:
-                    yield ErrorEvent(message="Failed to complete backtest").to_sse()
+                    yield ErrorEvent(content="Failed to complete backtest").to_sse()
                     return
 
                 # Send the final result

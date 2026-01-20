@@ -141,7 +141,7 @@ async def stream_analysis_ticker(ticker: str):
             yield f": {' ' * 2048}\n\n"
 
             # Start initial event
-            yield f"data: {json.dumps({'agent': 'system', 'content': f'Initializing stream for {ticker}...', 'signal': 'NEUTRAL', 'score': 50, 'timestamp': datetime.now(timezone.utc).isoformat()})}\\n\n"
+            yield f"data: {json.dumps({'schema_version': '1.0', 'agent': 'system', 'content': f'Initializing stream for {ticker}...', 'signal': 'NEUTRAL', 'score': 50, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
 
             # Start graph execution in background
             now = datetime.now(timezone.utc)
@@ -174,7 +174,7 @@ async def stream_analysis_ticker(ticker: str):
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            err_payload = {"agent": "system", "content": f"Error: {str(e)}", "signal": "NEUTRAL", "score": 50, "timestamp": datetime.now(timezone.utc).isoformat()}
+            err_payload = {"schema_version": "1.0", "agent": "system", "content": f"Error: {str(e)}", "signal": "NEUTRAL", "score": 50, "timestamp": datetime.now(timezone.utc).isoformat()}
             yield f"data: {json.dumps(err_payload)}\n\n"
         finally:
             progress.unregister_handler(progress_handler)
