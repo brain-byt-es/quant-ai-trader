@@ -225,11 +225,33 @@ def quant_engine_node(state: Dict[str, Any]):
     """LangGraph node for the Quant Engine. Handles dynamic Universe Selection."""
     data = state["data"]
     
+    # 0. Track Previous Universe for Changes
+    previous_tickers = set(data.get("tickers", []))
+    
     # 1. Universe Selection
     usm = UniverseSelectionModel()
     active_symbols = usm.select_symbols(datetime.utcnow(), data)
     data["tickers"] = active_symbols # Update state with active dynamic universe
     
+    # Handle Security Changes (LEAN-faithful cleanup)
+    removed_tickers = list(previous_tickers - set(active_symbols))
+    if removed_tickers:
+        from core.portfolio_manager import MeanVarianceOptimizationPortfolioConstructionModel
+        # In a real run, we'd use the persistent PCM instance from the session/context
+        pcm = MeanVarianceOptimizationPortfolioConstructionModel()
+        pcm.on_securities_changed(None, {"removed": removed_tickers})
+
+    # Emit progress for universe selection if screening occurred
+// ...
+    if "universe_selection_result" in data:
+        res = data["universe_selection_result"]
+        progress.update_status(
+            "system", 
+            None, 
+            f"Universe Selected: {res['base_count']} base -> {res['eligible_count']} eligible -> {len(active_symbols)} selected",
+            analysis=json.dumps(res)
+        )
+
     start_date = data["start_date"]
     end_date = data["end_date"]
 

@@ -163,17 +163,40 @@ class Trade(Base):
     error_message = Column(Text, nullable=True)
 
 
+class ScreenerRun(Base):
+    """Persistence for market-wide screener runs (Ranking as a contract)"""
+
+    __tablename__ = "screener_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    market = Column(String(50), nullable=False)
+    k = Column(Integer, nullable=False)
+
+    base_count = Column(Integer, nullable=False)
+    eligible_count = Column(Integer, nullable=False)
+
+    # Store top K and full factor table
+    selected_symbols = Column(JSON, nullable=False)
+    ranking_data = Column(JSON, nullable=False)  # Full result object including scores_table
+
+    # Configuration used
+    config = Column(JSON, nullable=True)
+    weights = Column(JSON, nullable=True)
+
+
 class ProposedTrade(Base):
     """Table to store trades proposed by the Investment Committee for HITL approval."""
 
     __tablename__ = "proposed_trades"
 
     id = Column(Integer, primary_key=True, index=True)
-    ticker = Column(String, nullable=False)
-    action = Column(String, nullable=False)  # BUY/SELL
+    ticker = Column(String(20), nullable=False)
+    action = Column(String(10), nullable=False)  # BUY/SELL
     quantity = Column(Integer, nullable=False)
     persona_logic = Column(JSON, nullable=True)  # Stores the summary of the debate
-    status = Column(String, default="PENDING")  # PENDING, APPROVED, REJECTED, EXECUTED
-    approval_token = Column(String, unique=True, index=True, nullable=True)
+    status = Column(String(50), default="PENDING")  # PENDING, APPROVED, REJECTED, EXECUTED
+    approval_token = Column(String(100), unique=True, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     flow_run_id = Column(Integer, ForeignKey("hedge_fund_flow_runs.id"), nullable=True)

@@ -41,6 +41,24 @@ class ErrorEvent(BaseEvent):
     timestamp: Optional[str] = None
 
 
+class UniverseEvent(BaseEvent):
+    """Event containing universe selection metrics"""
+
+    type: Literal["universe"] = "universe"
+    base_count: int
+    eligible_count: int
+    selected_symbols: List[str]
+    timestamp: Optional[str] = None
+
+
+class RankingEvent(BaseEvent):
+    """Event containing top K ranking results"""
+
+    type: Literal["ranking"] = "ranking"
+    top_k: List[Dict[str, Any]]  # List of {symbol, score, factors...}
+    timestamp: Optional[str] = None
+
+
 class CompleteEvent(BaseEvent):
     """Event indicating successful completion with results"""
 
