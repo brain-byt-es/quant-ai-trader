@@ -152,28 +152,35 @@ def run_graph(
     start date, end date, show reasoning, model name,
     and model provider.
     """
-    return graph.invoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content="Make trading decisions based on the provided data.",
-                )
-            ],
-            "data": {
-                "tickers": tickers,
-                "portfolio": portfolio,
-                "start_date": start_date,
-                "end_date": end_date,
-                "analyst_signals": {},
+    try:
+        print(f"Starting Graph Execution for tickers: {tickers}")
+        return graph.invoke(
+            {
+                "messages": [
+                    HumanMessage(
+                        content="Make trading decisions based on the provided data.",
+                    )
+                ],
+                "data": {
+                    "tickers": tickers,
+                    "portfolio": portfolio,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "analyst_signals": {},
+                },
+                "metadata": {
+                    "show_reasoning": False,
+                    "model_name": model_name,
+                    "model_provider": model_provider,
+                    "request": request,  # Pass the request for agent-specific model access
+                },
             },
-            "metadata": {
-                "show_reasoning": False,
-                "model_name": model_name,
-                "model_provider": model_provider,
-                "request": request,  # Pass the request for agent-specific model access
-            },
-        },
-    )
+        )
+    except Exception as e:
+        print(f"FATAL Graph Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise e
 
 
 def parse_hedge_fund_response(response):

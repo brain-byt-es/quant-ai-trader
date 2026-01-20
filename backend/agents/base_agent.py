@@ -10,6 +10,10 @@ class PersonaAlphaModel(AlphaModel):
         self._agent_id = agent_id
 
     @property
+    def agent_id(self) -> str:
+        return self._agent_id
+
+    @property
     def name(self) -> str:
         return self._agent_id
 

@@ -48,7 +48,7 @@ class AlphaVantageService(DataService):
                     time.sleep(wait_time)
 
                 try:
-                    response = requests.get(self.base_url, params=params)
+                    response = requests.get(self.base_url, params=params, timeout=10)
                     AlphaVantageService._last_call_time = time.time()
                     response.raise_for_status()
                     data = response.json()

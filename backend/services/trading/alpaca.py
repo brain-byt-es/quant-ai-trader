@@ -27,7 +27,7 @@ class AlpacaProvider(TradingProvider):
         data_url = "https://data.alpaca.markets/v2"
         url = f"{data_url}/stocks/bars"
 
-        response = requests.get(url, headers=self.headers, params=params)
+        response = requests.get(url, headers=self.headers, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -41,7 +41,7 @@ class AlpacaProvider(TradingProvider):
 
     def _request(self, method: str, endpoint: str, data: Dict = None) -> Any:
         url = f"{self.base_url}/{endpoint}"
-        response = requests.request(method, url, headers=self.headers, json=data)
+        response = requests.request(method, url, headers=self.headers, json=data, timeout=10)
         response.raise_for_status()
         return response.json()
 

@@ -51,8 +51,14 @@ async def stream_analysis_ticker(ticker: str):
             # Log to console for debugging
             print(f"Stream Update: {agent_name} -> {status} ({agent_ticker or 'Global'})")
 
-            # Only care about updates for THIS ticker
-            if agent_ticker is None or agent_ticker == ticker:
+            # Match logic: if 'GLOBAL' requested, send EVERYTHING. 
+            # Otherwise only send matches for this ticker OR system updates.
+            should_send = (ticker == "GLOBAL" or 
+                          agent_ticker is None or 
+                          agent_ticker == ticker or 
+                          agent_ticker == "SYSTEM")
+
+            if should_send:
                 # Map internal agent names to frontend AGENTS keys
                 name_map = {
                     "warren_buffett_agent": "Buffett",
@@ -99,7 +105,10 @@ async def stream_analysis_ticker(ticker: str):
 
                         if data:
                             # If it's a ticker-mapped dict, get our ticker's data
-                            ticker_data = data.get(ticker) if isinstance(data, dict) else data
+                            # Use agent_ticker if available, otherwise fallback to ticker
+                            lookup_ticker = agent_ticker if agent_ticker and agent_ticker != "GLOBAL" else (ticker if ticker != "GLOBAL" else None)
+                            
+                            ticker_data = data.get(lookup_ticker) if lookup_ticker and isinstance(data, dict) else data
 
                             if isinstance(ticker_data, dict):
                                 signal = ticker_data.get("signal", signal)
@@ -118,7 +127,7 @@ async def stream_analysis_ticker(ticker: str):
                 payload = {
                     "schema_version": "1.0",
                     "agent": display_name, 
-                    "ticker": ticker,
+                    "ticker": agent_ticker or ticker,
                     "content": content, 
                     "signal": signal, 
                     "score": score, 
@@ -143,13 +152,19 @@ async def stream_analysis_ticker(ticker: str):
             # Start initial event
             yield f"data: {json.dumps({'schema_version': '1.0', 'agent': 'system', 'content': f'Initializing stream for {ticker}...', 'signal': 'NEUTRAL', 'score': 50, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
 
+            # Confirm engine is active via the progress handler
+            progress.update_status("system", ticker, "Framework Engine Active")
+
+            # If ticker is GLOBAL, use a default set of tickers for the run
+            execution_tickers = [ticker] if ticker != "GLOBAL" else ["AAPL", "NVDA", "MSFT"]
+
             # Start graph execution in background
             now = datetime.now(timezone.utc)
             run_task = asyncio.create_task(
                 run_graph_async(
                     graph=graph,
                     portfolio={"cash": 100000.0, "positions": {}, "margin_requirement": 0.0, "realized_gains": {}},
-                    tickers=[ticker],
+                    tickers=execution_tickers,
                     start_date=(now - timedelta(days=90)).strftime("%Y-%m-%d"),
                     end_date=now.strftime("%Y-%m-%d"),
                     model_name="gpt-4.1",
@@ -160,15 +175,21 @@ async def stream_analysis_ticker(ticker: str):
             # Stream from queue
             while not run_task.done() or not progress_queue.empty():
                 try:
-                    event = await asyncio.wait_for(progress_queue.get(), timeout=0.2)
+                    event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
                     yield event
                 except asyncio.TimeoutError:
                     yield ": ping\n\n"
-
-                await asyncio.sleep(0.01)
+                except Exception as e:
+                    print(f"SSE Queue Error: {e}")
+                    await asyncio.sleep(0.1)
 
             # Wait for final result to ensure everything is done
-            await run_task
+            try:
+                await run_task
+                print(f"Analysis Graph Complete for {ticker}")
+            except Exception as e:
+                print(f"Graph Execution Error: {e}")
+                yield f"data: {json.dumps({'schema_version': '1.0', 'agent': 'system', 'content': f'Execution Error: {str(e)}', 'signal': 'NEUTRAL', 'score': 50, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
 
             # Final Done signal
             yield "data: [DONE]\n\n"

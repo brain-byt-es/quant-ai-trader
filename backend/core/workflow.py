@@ -30,23 +30,19 @@ def create_investment_committee_workflow(selected_analysts=None):
     selected_analytical = [k for k in selected_analysts if k in analytical_keys]
     selected_personas = [k for k in selected_analysts if k not in analytical_keys]
 
-    # 1. Run Analytical Agents (Data Gathering)
+    # 1. Run Analytical Agents (Data Gathering) - Sequential to avoid race conditions
+    last_node = "start_node"
     for key in selected_analytical:
         node_name, node_func = analyst_nodes[key]
         workflow.add_node(node_name, node_func)
-        workflow.add_edge("start_node", node_name)
+        workflow.add_edge(last_node, node_name)
+        last_node = node_name
 
     # 2. Quant Engine (Calculates Scorecard)
     workflow.add_node("quant_engine", quant_engine_node)
 
-    # Analytical Agents -> Quant Engine
-    for key in selected_analytical:
-        node_name = analyst_nodes[key][0]
-        workflow.add_edge(node_name, "quant_engine")
-
-    # If no analytical agents selected, start -> quant engine (fallback)
-    if not selected_analytical:
-        workflow.add_edge("start_node", "quant_engine")
+    # Connect last analytical agent to Quant Engine
+    workflow.add_edge(last_node, "quant_engine")
 
     # 3. Run Persona Agents (Debate Scorecard)
     for key in selected_personas:

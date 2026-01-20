@@ -20,3 +20,13 @@ async def get_portfolio_stats(db: Session = Depends(get_db)):
         return {"equity": 0, "buying_power": 0, "day_change_percent": 0}
 
     return {"equity": float(account.get("equity", 0)), "buying_power": float(account.get("buying_power", 0)), "day_change_percent": float(account.get("equity_change_percent", 0)) * 100}
+
+
+@router.get("/positions")
+async def get_portfolio_positions(db: Session = Depends(get_db)):
+    """
+    Get real-time portfolio positions from Alpaca.
+    """
+    trading_service = TradingService(db)
+    positions = trading_service.get_portfolio_positions()
+    return {"positions": positions}
