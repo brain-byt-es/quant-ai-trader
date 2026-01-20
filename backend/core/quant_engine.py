@@ -63,7 +63,7 @@ class QuantEngine:
 
         # 1. Fetch Data & Calculate Raw Metrics
         for ticker in self.tickers:
-            progress.update_status("quant_engine", ticker, "Calculating Factors")
+            progress.update_status("quant_engine", ticker, "Calculating Institutional Factors")
             metrics = self._calculate_ticker_metrics(ticker)
             if metrics:
                 metrics_data: Dict[str, Any] = cast(Dict[str, Any], metrics)
@@ -75,7 +75,7 @@ class QuantEngine:
 
         df = pd.DataFrame(raw_data)
 
-        # 2. Z-Score Normalization
+        # 2. Z-Score Normalization (Standard for LEAN Pipelines)
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         z_score_df = df.copy()
         for col in numeric_cols:
@@ -88,8 +88,9 @@ class QuantEngine:
         final_scorecard = {}
         for _, row in z_score_df.iterrows():
             ticker = str(row["ticker"])
-            
             orig_row = df[df["ticker"] == ticker].iloc[0]
+            
+            # Pack metrics and z-scores
             metrics_dict = {str(k): float(v) if pd.notnull(v) else 0.0 for k, v in orig_row.items() if str(k) != "ticker"}
             z_scores_dict = {str(k): float(v) if pd.notnull(v) else 0.0 for k, v in row.items() if str(k).endswith("_z")}
             
@@ -103,19 +104,24 @@ class QuantEngine:
 
     def _calculate_ticker_metrics(self, ticker: str) -> Optional[Dict[str, float]]:
         try:
-            # Batch data fetch via MarketDataClient (which now prioritizes Alpaca IEX)
+            # 1. Price Data
             prices_df = get_price_data(ticker, self.start_date, self.end_date)
             if prices_df.empty:
                 return None
 
+            # 2. Fundamental Data
             financials = get_financial_metrics(ticker, self.end_date, limit=1)
-            line_items = search_line_items(ticker, ["revenue", "total_assets", "ebit"], self.end_date, limit=1)
+            line_items = search_line_items(ticker, [
+                "revenue", "total_assets", "total_current_assets", 
+                "total_current_liabilities", "retained_earnings", "ebit", 
+                "total_liabilities", "research_and_development"
+            ], self.end_date, limit=1)
             market_cap = get_market_cap(ticker, self.end_date)
 
             latest_fin = financials[0] if financials else None
             latest_line = line_items[0] if line_items else None
 
-            # Momentum Cluster
+            # --- Momentum Cluster ---
             prices = prices_df["close"]
             returns = prices.pct_change().dropna()
             
@@ -124,30 +130,64 @@ class QuantEngine:
                 mom_12m_1m = float((prices.iloc[-21] / prices.iloc[-252]) - 1)
 
             rsi = calculate_rsi(prices) if len(prices) > 14 else 50.0
-            
             ma_200 = prices.rolling(window=200).mean().iloc[-1] if len(prices) >= 200 else prices.mean()
             dist_200ma = float((prices.iloc[-1] / ma_200) - 1)
 
-            # Risk Cluster
+            # --- Risk Cluster ---
             max_dd = calculate_max_drawdown(prices)
             var_95 = calculate_var(returns)
 
-            # Value/Quality/Growth (extracted from latest_fin/latest_line)
+            # --- Value Cluster ---
             pe = getattr(latest_fin, "price_to_earnings_ratio", 0.0) or 0.0
+            pb = getattr(latest_fin, "price_to_book_ratio", 0.0) or 0.0
+            ev_ebitda = getattr(latest_fin, "enterprise_value_to_ebitda_ratio", 0.0) or 0.0
+            fcf_yield = getattr(latest_fin, "free_cash_flow_yield", 0.0) or 0.0
+
+            # --- Quality Cluster ---
             roe = getattr(latest_fin, "return_on_equity", 0.0) or 0.0
+            roic = getattr(latest_fin, "return_on_invested_capital", 0.0) or 0.0
+            debt_equity = getattr(latest_fin, "debt_to_equity", 0.0) or 0.0
+
+            # Altman Z-Score Restoration
+            altman_z = 0.0
+            if latest_line:
+                ta = float(getattr(latest_line, "total_assets", 0) or 0)
+                if ta > 0:
+                    tca = float(getattr(latest_line, "total_current_assets", 0) or 0)
+                    tcl = float(getattr(latest_line, "total_current_liabilities", 0) or 0)
+                    re = float(getattr(latest_line, "retained_earnings", 0) or 0)
+                    ebit = float(getattr(latest_line, "ebit", 0) or 0)
+                    tl = float(getattr(latest_line, "total_liabilities", 1) or 1)
+                    rev = float(getattr(latest_line, "revenue", 0) or 0)
+                    mve = float(market_cap or 0)
+
+                    a = (tca - tcl) / ta
+                    b = re / ta
+                    c = ebit / ta
+                    d = mve / tl
+                    e = rev / ta
+                    altman_z = 1.2 * a + 1.4 * b + 3.3 * c + 0.6 * d + 1.0 * e
+
+            # --- Growth Cluster ---
             rev_growth = getattr(latest_fin, "revenue_growth", 0.0) or 0.0
+            eps_growth = getattr(latest_fin, "earnings_growth", 0.0) or 0.0
 
             return {
-                "momentum_12m_1m": mom_12m_1m,
-                "rsi": rsi,
-                "dist_200ma": dist_200ma,
-                "beta": 1.0,
-                "max_drawdown": max_dd,
-                "var_95": var_95,
+                "momentum_12m_1m": float(mom_12m_1m),
+                "rsi": float(rsi),
+                "dist_200ma": float(dist_200ma),
+                "max_drawdown": float(max_dd),
+                "var_95": float(var_95),
                 "pe_ratio": float(pe),
+                "pb_ratio": float(pb),
+                "ev_ebitda": float(ev_ebitda),
+                "fcf_yield": float(fcf_yield),
                 "roe": float(roe),
+                "roic": float(roic),
+                "debt_to_equity": float(debt_equity),
+                "altman_z": float(altman_z),
                 "revenue_growth": float(rev_growth),
-                "altman_z": 3.0, # Placeholder if missing
+                "eps_growth": float(eps_growth),
             }
 
         except Exception as e:
@@ -156,15 +196,13 @@ class QuantEngine:
 
 
 def quant_engine_node(state: Dict[str, Any]):
-    """LangGraph node for the Quant Engine. Handles dynamic Universe Selection."""
+    """LangGraph node for the Quant Engine."""
     data = state["data"]
     
-    # 1. Universe Selection
     usm = UniverseSelectionModel()
     active_symbols = usm.select_symbols(datetime.now(UTC), data)
     data["tickers"] = active_symbols 
     
-    # 2. Factor Calculation
     engine = QuantEngine(active_symbols, data["start_date"], data["end_date"])
     scorecard = engine.run()
 

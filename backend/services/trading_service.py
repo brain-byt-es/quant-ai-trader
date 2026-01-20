@@ -20,12 +20,12 @@ class TradingService:
         self.provider = self._get_provider()
 
     def _get_provider(self) -> Optional[TradingProvider]:
+        # Strictly use your environment keys
         api_key = os.environ.get("ALPACA_API_KEY")
         api_secret = os.environ.get("ALPACA_SECRET_KEY")
 
         if not api_key or not api_secret:
-            # Fallback for dev/test if no keys
-            print("Warning: Alpaca credentials not found. Trading service disabled.")
+            print("Warning: Alpaca credentials (ALPACA_API_KEY/ALPACA_SECRET_KEY) not found. Trading service disabled.")
             return None
 
         if self.mode == "live":
@@ -47,14 +47,12 @@ class TradingService:
     def create_trade_request(self, ticker: str, action: str, quantity: int, rationale: Dict, flow_run_id: Optional[int] = None, risk_score: Optional[float] = None, limit_price: Optional[float] = None) -> Trade:
         """
         Creates a trade request in the database.
-        If mode is 'paper', it might execute immediately depending on policy (but prompt says Safety Gate for Live).
         """
-        trade = Trade(ticker=ticker, action=action.upper(), quantity=quantity, order_type="limit" if limit_price else "market", limit_price=str(limit_price) if limit_price else None, persona_rationale=rationale, risk_score=str(risk_score) if risk_score is not None else None, flow_run_id=flow_run_id, status="PENDING_APPROVAL")  # Always pending first, unless auto-execute policy
+        trade = Trade(ticker=ticker, action=action.upper(), quantity=quantity, order_type="limit" if limit_price else "market", limit_price=str(limit_price) if limit_price else None, persona_rationale=rationale, risk_score=str(risk_score) if risk_score is not None else None, flow_run_id=flow_run_id, status="PENDING_APPROVAL")
         self.db.add(trade)
         self.db.commit()
         self.db.refresh(trade)
 
-        # Auto-execute if paper mode?
         if self.mode == "paper":
             self.execute_trade(trade.id)
 
@@ -69,7 +67,6 @@ class TradingService:
             return trade
 
         if self.mode == "live" and not trade.manual_approval_timestamp:
-            # If called manually without setting timestamp, set it now
             trade.manual_approval_timestamp = datetime.now()
             trade.approved_by = approver
 
@@ -86,11 +83,10 @@ class TradingService:
 
             order = self.provider.submit_order(ticker=trade.ticker, qty=trade.quantity, side=side, type=type, limit_price=limit_price)
 
-            trade.status = "SUBMITTED"  # or EXECUTED if immediate
+            trade.status = "SUBMITTED"
             trade.brokerage_order_id = order.id
             trade.execution_time = datetime.now()
 
-            # For simplicity, assume submitted = executed for now, or use a background poller to update status
             if order.status == OrderStatus.FILLED:
                 trade.status = "EXECUTED"
                 trade.execution_price = str(order.filled_avg_price)
@@ -107,5 +103,5 @@ class TradingService:
         trade = self.db.query(Trade).filter(Trade.id == trade_id).first()
         if trade and trade.status == "PENDING_APPROVAL":
             trade.status = "REJECTED"
-            trade.approved_by = user  # Rejected by
+            trade.approved_by = user
             self.db.commit()

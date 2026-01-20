@@ -6,7 +6,7 @@ from core.execution_planner import ExecutionPlanner
 from lean_bridge.contracts import Insight
 from lean_bridge.context import AlgorithmContext
 from utils.progress import progress
-from datetime import datetime
+from datetime import datetime, UTC
 
 def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_manager"):
     """
@@ -16,7 +16,7 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
     
     # 1. Prepare AlgorithmContext
     context = AlgorithmContext(
-        time=datetime.utcnow(),
+        time=datetime.now(UTC),
         universe=data.get("tickers", []),
         portfolio_state=data.get("portfolio", {}),
         config={

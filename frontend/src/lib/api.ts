@@ -1,6 +1,5 @@
 // Define the base URL for the API
 // In development, we use the Next.js proxy (/api/py) which forwards to localhost:8000
-// In production, we might use a direct URL or keeping the proxy
 const BASE_URL = "/api/py";
 
 export class ApiClient {
@@ -30,7 +29,8 @@ export class ApiClient {
     });
 
     if (!res.ok) {
-      throw new Error(`API call failed: ${res.statusText}`);
+      const errorBody = await res.json().catch(() => ({}));
+      throw new Error(errorBody.detail || `API call failed: ${res.statusText}`);
     }
 
     return res.json();
@@ -74,6 +74,12 @@ export class ApiClient {
   public streamAnalysis(ticker: string): EventSource {
     const url = `${this.baseUrl}/analysis/stream/${ticker}`;
     return new EventSource(url);
+  }
+
+  public async triggerKillSwitch() {
+    return this.fetch<{ status: string; message: string }>("/trading/kill-switch", {
+      method: "POST"
+    });
   }
 
   // Health check for the backend

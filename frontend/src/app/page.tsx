@@ -47,22 +47,26 @@ export default function ExecutionTerminal() {
   } = useUniverseStore();
   const [isPortfolioOpen, setIsPortfolioOpen] = useState(true);
   const { theme } = useTheme();
+  
+  // State for active scan
+  const [scanConfig, setScanConfig] = useState<{ market?: string; k?: number }>({});
   const [isScanning, setIsScanning] = useState(false);
+  const [isLiquidating, setIsLiquidating] = useState(false);
 
   const handleScanMarket = async () => {
     setIsScanning(true);
     toast.info("MARKET SCAN INITIALIZED", {
-      description: "Screening 1000+ symbols for multi-factor mispricing...",
+      description: "Screening symbols for multi-factor mispricing...",
     });
     
-    // To trigger a real scan, we need to tell LiveDebateFloor to reconnect 
-    // with market parameters. For now, we simulate by clearing current tickers.
+    // Clear current tickers to show screener results
     useUniverseStore.setState({ tickers: {}, rankedCandidates: [] });
     
-    // In a full implementation, we'd pass these params to LiveDebateFloor
-    // or trigger an API call that returns the stream URL.
+    // Trigger reconnection in LiveDebateFloor by updating scanConfig
+    setScanConfig({ market: "US", k: 10 });
     
-    setIsScanning(false);
+    // Scanning state is purely visual here, the actual work happens in the SSE stream
+    setTimeout(() => setIsScanning(false), 2000);
   };
 
   // Initialize universe
@@ -119,11 +123,25 @@ export default function ExecutionTerminal() {
     return () => clearInterval(interval);
   }, [updateTicker, setGlobalMetrics]);
 
-  const handleKillSwitch = () => {
-    toast.error("CRITICAL: MASS LIQUIDATION TRIGGERED", {
-      description: "Executing market sell orders for all active positions.",
-      duration: 5000,
-    });
+  const handleKillSwitch = async () => {
+    if (confirm("🚨 WARNING: Are you sure you want to trigger MASS LIQUIDATION? All open orders will be cancelled and all positions will be closed immediately.")) {
+      setIsLiquidating(true);
+      try {
+        const result = await api.triggerKillSwitch();
+        toast.error("MASS LIQUIDATION SUCCESSFUL", {
+          description: result.message,
+          duration: 10000,
+        });
+        // Clear local state
+        useUniverseStore.getState().setPositions([]);
+      } catch (error: any) {
+        toast.error("KILL SWITCH FAILED", {
+          description: error.message || "An unexpected error occurred during liquidation.",
+        });
+      } finally {
+        setIsLiquidating(false);
+      }
+    }
   };
 
   return (
@@ -132,7 +150,6 @@ export default function ExecutionTerminal() {
         QuantTrader Framework v2.0.1 (Institutional Build) | {isAutoMode ? "Autonomous Mode" : "Manual Gate"} | Connection: Active
       </div>
       
-      {/* Task 5: Global Control Bar */}
       <header className="h-14 border-b border-border flex items-center justify-between px-4 bg-card shrink-0 z-50">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
@@ -157,7 +174,6 @@ export default function ExecutionTerminal() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Bot/Human Mode Switch */}
           <div className="flex items-center gap-2 px-3 py-1 bg-muted/50 rounded-md border border-border h-9">
             <Bot className={cn("h-4 w-4 transition-colors", isAutoMode ? "text-emerald-500" : "text-muted-foreground")} />
             <Switch 
@@ -184,18 +200,20 @@ export default function ExecutionTerminal() {
               variant="destructive" 
               size="sm" 
               onClick={handleKillSwitch}
-              className="h-9 bg-destructive hover:bg-destructive/90 text-[10px] font-black uppercase tracking-widest gap-2 px-4 shadow-sm border-none"
+              disabled={isLiquidating}
+              className={cn(
+                "h-9 bg-destructive hover:bg-destructive/90 text-[10px] font-black uppercase tracking-widest gap-2 px-4 shadow-sm border-none transition-all",
+                isLiquidating && "animate-pulse opacity-70 cursor-not-allowed"
+              )}
             >
               <ShieldAlert className="h-4 w-4" />
-              <span className="hidden md:inline">Kill Switch</span>
+              <span className="hidden md:inline">{isLiquidating ? "LIQUIDATING..." : "Kill Switch"}</span>
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Main Layout: 70/30 Split */}
       <main className="flex-1 flex overflow-hidden">
-        {/* Task 1: The 'Strategy Universe' (Left 70%) */}
         <section className="w-[70%] flex flex-col h-full overflow-hidden border-r border-border">
           <div className="flex items-center justify-between p-4 border-b border-border bg-card/50 shrink-0">
             <div className="flex items-center gap-2">
@@ -246,7 +264,6 @@ export default function ExecutionTerminal() {
             </div>
           </div>
 
-          {/* Task 3: The 'Portfolio Table' (Sitting in a collapsible bottom tray) */}
           <footer className={cn(
             "border-t border-border bg-card transition-all duration-300 ease-in-out shrink-0",
             isPortfolioOpen ? "h-[300px]" : "h-10"
@@ -265,13 +282,16 @@ export default function ExecutionTerminal() {
           </footer>
         </section>
 
-        {/* Task 1 & 4: Global Sidebar (Right 30%) */}
         <aside className="w-[30%] h-full shrink-0 border-l border-border flex flex-col">
           <div className="flex-1 overflow-hidden">
             <ScreenerPanel />
           </div>
           <div className="h-1/2 border-t border-border overflow-hidden">
-            <LiveDebateFloor />
+            <LiveDebateFloor 
+              ticker="GLOBAL" 
+              market={scanConfig.market} 
+              k={scanConfig.k} 
+            />
           </div>
         </aside>
       </main>

@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from lean_bridge.contracts import Insight, InsightDirection
 from lean_bridge.context import AlgorithmContext
 from core.portfolio_manager import MeanVarianceOptimizationPortfolioConstructionModel
@@ -15,7 +15,7 @@ async def test_lean_pipeline():
     
     # 1. Setup Context
     context = AlgorithmContext(
-        time=datetime.utcnow(),
+        time=datetime.now(UTC),
         universe=["AAPL", "TSLA", "NVDA"],
         portfolio_state={
             "equity": 100000.0,

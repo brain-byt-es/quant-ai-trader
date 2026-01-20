@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { useUniverseStore } from "@/store/useUniverseStore";
@@ -41,16 +41,33 @@ const AGENTS = {
   SentimentAnalyst: { badge: "SOCIAL | AGG" },
 };
 
-export function LiveDebateFloor() {
+interface LiveDebateFloorProps {
+  ticker?: string;
+  market?: string;
+  k?: number;
+}
+
+export function LiveDebateFloor({ ticker = "GLOBAL", market, k }: LiveDebateFloorProps) {
   const [logs, setLogs] = useState<AgentLogEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const updateTicker = useUniverseStore((state) => state.updateTicker);
 
+  // Use useMemo for the URL to prevent unnecessary reconnections
+  const streamUrl = useMemo(() => {
+    let url = `/api/py/analysis/stream/${ticker}`;
+    const params = new URLSearchParams();
+    if (market) params.append("market", market);
+    if (k) params.append("k", k.toString());
+    
+    const queryString = params.toString();
+    return queryString ? `${url}?${queryString}` : url;
+  }, [ticker, market, k]);
+
   useEffect(() => {
-    console.log("Establishing SSE Connection to GLOBAL...");
-    const eventSource = api.streamAnalysis("GLOBAL"); 
+    console.log(`Establishing SSE Connection to ${streamUrl}...`);
+    const eventSource = new EventSource(streamUrl); 
 
     eventSource.onopen = () => {
       console.log("SSE Connection Opened");
@@ -66,7 +83,6 @@ export function LiveDebateFloor() {
       }
 
       try {
-        console.log("SSE Message Received:", event.data);
         const rawData = JSON.parse(event.data);
         
         // Handle specialized events first
@@ -94,15 +110,14 @@ export function LiveDebateFloor() {
         }
 
         const data = result.data;
-        const ticker = data.ticker || "SYSTEM";
-        // Normalize agent name for AGENTS lookup (e.g. TechnicalAnalyst)
+        const logTicker = data.ticker || ticker || "SYSTEM";
         const agentName = data.agent || "UNKNOWN";
         
         const confidence = data.confidence || 0;
         const magnitude = data.magnitude || 0;
 
         if (data.score || data.signal) {
-          updateTicker(ticker, {
+          updateTicker(logTicker, {
             signal: (data.signal || "NEUTRAL").toUpperCase() as "BULLISH" | "BEARISH" | "NEUTRAL",
             score: data.score || 50,
           });
@@ -111,7 +126,7 @@ export function LiveDebateFloor() {
         const newLog: AgentLogEntry = {
           id: crypto.randomUUID(),
           timestamp: new Date().toLocaleTimeString('en-GB', { hour12: false }),
-          ticker: ticker,
+          ticker: logTicker,
           agentId: agentName,
           badge: AGENTS[agentName as keyof typeof AGENTS]?.badge || "ALPHA MODEL",
           signal: (data.signal || "NEUTRAL").toUpperCase() as "BULLISH" | "BEARISH" | "NEUTRAL",
@@ -140,7 +155,7 @@ export function LiveDebateFloor() {
       console.log("Closing SSE Connection");
       eventSource.close();
     };
-  }, [updateTicker]);
+  }, [streamUrl, updateTicker, ticker]);
 
 
   useEffect(() => {

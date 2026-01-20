@@ -16,8 +16,10 @@ class MarketDataClient:
         self.alpaca = self._get_alpaca_provider()  # Primary for Prices/Execution
 
     def _get_alpaca_provider(self):
+        # Strictly use your environment keys
         api_key = os.environ.get("ALPACA_API_KEY")
         api_secret = os.environ.get("ALPACA_SECRET_KEY")
+        
         if not api_key or not api_secret:
             return None
             
@@ -31,19 +33,17 @@ class MarketDataClient:
         if not ticker or ticker.upper() == "GLOBAL" or ticker.upper() == "SYSTEM":
             return []
 
-        # 1. Try Alpaca (with fallback)
+        # 1. Try Alpaca (with prioritized IEX feed for broad coverage)
         prices = []
         if self.alpaca:
             try:
-                # Alpaca get_bars returns list of dicts
-                # We try to use IEX feed by default for broad coverage on free tier
                 bar_data = self.alpaca.get_bars(ticker, start_date, end_date)
                 if bar_data:
                     prices = [Price(**b) for b in bar_data]
             except Exception as e:
                 print(f"Alpaca price fetch failed for {ticker}: {e}")
 
-        # 2. Fallback to Alpha Vantage if Alpaca fails or returns no data
+        # 2. Fallback to Alpha Vantage
         if not prices:
             try:
                 print(f"Falling back to Alpha Vantage for {ticker} prices...")

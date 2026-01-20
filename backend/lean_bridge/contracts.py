@@ -2,7 +2,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import math
 from abc import ABC, abstractmethod
 
@@ -26,7 +26,7 @@ class Insight(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     symbol: str
-    generated_time_utc: datetime = Field(default_factory=datetime.utcnow)
+    generated_time_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
     period: timedelta
     type: InsightType = InsightType.PRICE
     direction: InsightDirection
@@ -50,6 +50,13 @@ class Insight(BaseModel):
             raise ValueError("Period must be greater than zero")
         return v
 
+    @field_validator('generated_time_utc', mode='before')
+    @classmethod
+    def ensure_utc(cls, v: Any) -> datetime:
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=UTC)
+        return v
+
     @classmethod
     def price(cls, symbol: str, period: timedelta, direction: InsightDirection, 
               magnitude: float, confidence: float = 0.0, 
@@ -65,7 +72,9 @@ class Insight(BaseModel):
         )
 
     def is_expired(self, utc_time: datetime) -> bool:
-        return self.generated_time_utc + self.period <= utc_time
+        # Standardize utc_time comparison
+        compare_time = utc_time if utc_time.tzinfo else utc_time.replace(tzinfo=UTC)
+        return self.generated_time_utc + self.period <= compare_time
 
 class PortfolioTarget(BaseModel):
     """

@@ -11,9 +11,12 @@ class AlpacaProvider(TradingProvider):
         self.api_key = api_key
         self.api_secret = api_secret
         
+        # Use strictly what is provided in .env or the constructor
         env_base = os.environ.get("ALPACA_API_BASE_URL")
         final_base = env_base if env_base else base_url
-        self.base_url = final_base.rstrip("/").removesuffix("/v2")
+        
+        # Ensure the base URL is clean (no trailing /v2 or /)
+        self.base_url = final_base.rstrip("/").replace("/v2", "")
         
         self.headers = {
             "APCA-API-KEY-ID": self.api_key, 
@@ -23,10 +26,9 @@ class AlpacaProvider(TradingProvider):
 
     def get_bars(self, ticker: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """
-        Fetch daily bars. 
-        IMPORTANT: Alpaca Free tier (Basic) REQUIRE feed='iex'.
+        Fetch daily bars using the Alpaca Data API.
         """
-        # Alpaca Data API v2
+        # Hardcoded to official data domain as it's standard for all Alpaca accounts
         url = "https://data.alpaca.markets/v2/stocks/bars"
         
         params = {
@@ -42,15 +44,10 @@ class AlpacaProvider(TradingProvider):
         print(f"Alpaca: Fetching bars for {ticker} (Feed: IEX)...")
         response = requests.get(url, headers=self.headers, params=params, timeout=10)
         
-        # Log the actual URL for debugging (sanitized)
-        if response.status_code != 200:
-            print(f"Alpaca Error {response.status_code}: {response.text}")
-            # Try a second time without the feed if 403 persists, 
-            # just in case the user has a subscription but the env says paper
-            if response.status_code == 403:
-                print("Retrying Alpaca without explicit IEX feed...")
-                params.pop("feed", None)
-                response = requests.get(url, headers=self.headers, params=params, timeout=10)
+        if response.status_code == 403:
+            print(f"Alpaca 403: Retrying without explicit IEX feed for {ticker}...")
+            params.pop("feed", None)
+            response = requests.get(url, headers=self.headers, params=params, timeout=10)
 
         response.raise_for_status()
         data = response.json()
@@ -70,7 +67,10 @@ class AlpacaProvider(TradingProvider):
         return prices
 
     def _request(self, method: str, endpoint: str, data: Dict[str, Any] | None = None) -> Any:
-        url = f"{self.base_url}/{endpoint}"
+        # Manually ensure v2 prefix for all trading endpoints
+        path = endpoint if endpoint.startswith("v2/") else f"v2/{endpoint}"
+        url = f"{self.base_url}/{path}"
+        
         response = requests.request(method, url, headers=self.headers, json=data, timeout=10)
         
         if response.status_code == 204:
@@ -80,10 +80,10 @@ class AlpacaProvider(TradingProvider):
         return response.json()
 
     def get_account(self) -> Dict[str, Any]:
-        return self._request("GET", "v2/account")
+        return self._request("GET", "account")
 
     def get_positions(self) -> List[Position]:
-        positions_data = self._request("GET", "v2/positions")
+        positions_data = self._request("GET", "positions")
         positions = []
         for p in positions_data:
             positions.append(Position(ticker=str(p["symbol"]), qty=float(p["qty"]), market_value=float(p["market_value"]), cost_basis=float(p["cost_basis"]), unrealized_pl=float(p["unrealized_pl"]), unrealized_plpc=float(p["unrealized_plpc"])))
@@ -94,19 +94,19 @@ class AlpacaProvider(TradingProvider):
         if limit_price and type == OrderType.LIMIT:
             data["limit_price"] = limit_price
 
-        order_data = self._request("POST", "v2/orders", data)
+        order_data = self._request("POST", "orders", data)
         return self._map_order(order_data)
 
     def get_order(self, order_id: str) -> Order:
-        order_data = self._request("GET", f"v2/orders/{order_id}")
+        order_data = self._request("GET", f"orders/{order_id}")
         return self._map_order(order_data)
 
     def cancel_order(self, order_id: str):
-        self._request("DELETE", f"v2/orders/{order_id}")
+        self._request("DELETE", f"orders/{order_id}")
 
     def liquidate_all_positions(self, cancel_orders: bool = True) -> List[Dict[str, Any]]:
         params = f"?cancel_orders={str(cancel_orders).lower()}"
-        return self._request("DELETE", f"v2/positions{params}")
+        return self._request("DELETE", f"positions{params}")
 
     def _map_order(self, data: Dict[str, Any]) -> Order:
         return Order(
