@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional, cast
 
 import requests
@@ -9,29 +10,72 @@ class AlpacaProvider(TradingProvider):
     def __init__(self, api_key: str, api_secret: str, base_url: str):
         self.api_key = api_key
         self.api_secret = api_secret
-        self.base_url = base_url
-        self.headers = {"APCA-API-KEY-ID": self.api_key, "APCA-API-SECRET-KEY": self.api_secret}
+        
+        env_base = os.environ.get("ALPACA_API_BASE_URL")
+        final_base = env_base if env_base else base_url
+        self.base_url = final_base.rstrip("/").removesuffix("/v2")
+        
+        self.headers = {
+            "APCA-API-KEY-ID": self.api_key, 
+            "APCA-API-SECRET-KEY": self.api_secret,
+            "Accept": "application/json"
+        }
 
     def get_bars(self, ticker: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        # Alpaca bars endpoint
-        params = {"symbols": ticker, "timeframe": "1Day", "start": start_date, "end": end_date, "limit": 10000}
+        """
+        Fetch daily bars. 
+        IMPORTANT: Alpaca Free tier (Basic) REQUIRE feed='iex'.
+        """
+        # Alpaca Data API v2
+        url = "https://data.alpaca.markets/v2/stocks/bars"
+        
+        params = {
+            "symbols": ticker, 
+            "timeframe": "1Day", 
+            "start": start_date, 
+            "end": end_date, 
+            "limit": 1000,
+            "feed": "iex",
+            "adjustment": "all"
+        }
 
-        data_url = "https://data.alpaca.markets/v2"
-        url = f"{data_url}/stocks/bars"
-
+        print(f"Alpaca: Fetching bars for {ticker} (Feed: IEX)...")
         response = requests.get(url, headers=self.headers, params=params, timeout=10)
+        
+        # Log the actual URL for debugging (sanitized)
+        if response.status_code != 200:
+            print(f"Alpaca Error {response.status_code}: {response.text}")
+            # Try a second time without the feed if 403 persists, 
+            # just in case the user has a subscription but the env says paper
+            if response.status_code == 403:
+                print("Retrying Alpaca without explicit IEX feed...")
+                params.pop("feed", None)
+                response = requests.get(url, headers=self.headers, params=params, timeout=10)
+
         response.raise_for_status()
         data = response.json()
 
         bars = data.get("bars", {}).get(ticker, [])
         prices = []
         for b in bars:
-            prices.append({"ticker": ticker, "time": b["t"], "open": b["o"], "high": b["h"], "low": b["l"], "close": b["c"], "volume": b["v"]})
+            prices.append({
+                "ticker": ticker, 
+                "time": b["t"], 
+                "open": float(b["o"]), 
+                "high": float(b["h"]), 
+                "low": float(b["l"]), 
+                "close": float(b["c"]), 
+                "volume": int(b["v"])
+            })
         return prices
 
     def _request(self, method: str, endpoint: str, data: Dict[str, Any] | None = None) -> Any:
         url = f"{self.base_url}/{endpoint}"
         response = requests.request(method, url, headers=self.headers, json=data, timeout=10)
+        
+        if response.status_code == 204:
+            return {}
+            
         response.raise_for_status()
         return response.json()
 
@@ -59,6 +103,10 @@ class AlpacaProvider(TradingProvider):
 
     def cancel_order(self, order_id: str):
         self._request("DELETE", f"v2/orders/{order_id}")
+
+    def liquidate_all_positions(self, cancel_orders: bool = True) -> List[Dict[str, Any]]:
+        params = f"?cancel_orders={str(cancel_orders).lower()}"
+        return self._request("DELETE", f"v2/positions{params}")
 
     def _map_order(self, data: Dict[str, Any]) -> Order:
         return Order(

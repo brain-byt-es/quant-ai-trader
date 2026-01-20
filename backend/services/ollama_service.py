@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Optional, Any, cast
+from typing import AsyncGenerator, Dict, List, Optional, Any, cast, Tuple
 
 import ollama
 
@@ -36,7 +36,7 @@ class OllamaService:
             is_running = await self._check_server_running()
             models, server_url = await self._get_server_info(is_running)
 
-            status = {"installed": is_installed, "running": is_running, "server_running": is_running, "available_models": models, "server_url": server_url, "error": None}  # Backward compatibility
+            status = {"installed": is_installed, "running": is_running, "server_running": is_running, "available_models": models, "server_url": server_url, "error": None}
 
             logger.debug(f"Ollama status: installed={is_installed}, running={is_running}, models={len(models)}")
             return status
@@ -113,13 +113,7 @@ class OllamaService:
             return []
 
     async def get_available_models(self) -> List[Dict[str, str]]:
-        """Get available Ollama models formatted for the language models API.
-
-        Returns only models that are:
-        1. Server is running
-        2. Model is downloaded locally
-        3. Model is in our recommended list (OLLAMA_MODELS)
-        """
+        """Get available Ollama models formatted for the language models API."""
         try:
             status = await self.check_ollama_status()
 
@@ -127,7 +121,7 @@ class OllamaService:
                 logger.debug("Ollama server not running, returning no models for API")
                 return []
 
-            downloaded_models = status.get("available_models", [])
+            downloaded_models = cast(List[str], status.get("available_models", []))
             if not downloaded_models:
                 logger.debug("No Ollama models downloaded, returning empty list for API")
                 return []
@@ -138,7 +132,7 @@ class OllamaService:
 
         except Exception as e:
             logger.error(f"Error getting available models for API: {e}")
-            return []  # Return empty list on error to not break the API
+            return []
 
     def get_download_progress(self, model_name: str) -> Optional[Dict[str, Any]]:
         """Get current download progress for a model."""
@@ -150,8 +144,6 @@ class OllamaService:
 
     def cancel_download(self, model_name: str) -> bool:
         """Cancel an active download."""
-        logger.warning(f"Download cancellation not directly supported by ollama client for model: {model_name}")
-
         if model_name in self._download_progress:
             self._download_progress[model_name] = {"status": "cancelled", "message": f"Download of {model_name} was cancelled", "error": "Download cancelled by user"}
             return True
@@ -193,14 +185,13 @@ class OllamaService:
             logger.debug(f"Ollama server not reachable: {e}")
             return False
 
-    async def _get_server_info(self, is_running: bool) -> tuple[List[str], str]:
+    async def _get_server_info(self, is_running: bool) -> Tuple[List[str], str]:
         """Get server information (models and URL) if server is running."""
         if not is_running:
             return [], ""
 
         try:
             response = await self._async_client.list()
-            # Explicitly cast model to str to satisfy return type tuple[List[str], str]
             models = [str(model.model) for model in response.models]
             server_url = str(getattr(self._async_client, "host", "http://localhost:11434"))
             logger.debug(f"Found {len(models)} locally available models")
@@ -211,13 +202,12 @@ class OllamaService:
 
     async def _execute_server_start(self) -> bool:
         """Execute server start operation."""
-        # Check if already running
         try:
             self._sync_client.list()
             logger.info("Ollama server is already running")
             return True
         except Exception:
-            pass  # Server not running, continue to start it
+            pass
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._start_ollama_process)
@@ -241,7 +231,7 @@ class OllamaService:
         """Wait for server to start and become ready."""
         logger.info("Starting Ollama server, waiting for it to become ready...")
 
-        for i in range(20):  # Try for 20 seconds
+        for i in range(20):
             time.sleep(1)
             try:
                 self._sync_client.list()
@@ -256,7 +246,6 @@ class OllamaService:
 
     async def _execute_server_stop(self) -> bool:
         """Execute server stop operation."""
-        # Check if already stopped
         try:
             self._sync_client.list()
         except Exception:
@@ -309,7 +298,6 @@ class OllamaService:
 
     def _terminate_processes(self, pids: List[str]) -> None:
         """Terminate processes gracefully, then forcefully if needed."""
-        # Try SIGTERM first
         for pid in pids:
             if pid:
                 try:
@@ -317,15 +305,13 @@ class OllamaService:
                 except (ValueError, ProcessLookupError, PermissionError):
                     continue
 
-        # Wait for graceful termination
         for _ in range(5):
             try:
                 self._sync_client.list()
                 time.sleep(1)
             except Exception:
-                return  # Server stopped
+                return
 
-        # Force kill if still running
         for pid in pids:
             if pid:
                 try:
@@ -385,10 +371,9 @@ class OllamaService:
 
             yield f"data: {json.dumps({'status': 'starting', 'percentage': 0, 'message': f'Starting download of {model_name}...'})}\n\n"
 
-            # Await the pull method to get the async iterator
             pull_stream = await self._async_client.pull(model_name, stream=True)
-            async for progress in pull_stream:
-                progress_data = self._process_download_progress(progress, model_name)
+            async for progress_update in pull_stream:
+                progress_data = self._process_download_progress(progress_update, model_name)
                 if progress_data:
                     yield f"data: {json.dumps(progress_data)}\n\n"
 
@@ -406,27 +391,27 @@ class OllamaService:
             if model_name in self._download_progress:
                 del self._download_progress[model_name]
 
-    def _process_download_progress(self, progress, model_name: str) -> Optional[Dict[str, Any]]:
+    def _process_download_progress(self, progress_update: Any, model_name: str) -> Optional[Dict[str, Any]]:
         """Process download progress from ollama client."""
-        if not hasattr(progress, "status"):
+        if not hasattr(progress_update, "status"):
             return None
 
-        progress_data = {"status": "downloading", "message": progress.status, "raw_output": progress.status}
+        status_text = str(getattr(progress_update, "status", "unknown"))
+        progress_data: Dict[str, Any] = {"status": "downloading", "message": status_text, "raw_output": status_text}
 
-        # Add completed/total info if available
-        if hasattr(progress, "completed") and hasattr(progress, "total") and progress.total is not None and progress.completed is not None and progress.total > 0:
-            percentage = (progress.completed / progress.total) * 100
-            progress_data.update({"percentage": percentage, "bytes_downloaded": progress.completed, "total_bytes": progress.total})
+        completed = getattr(progress_update, "completed", None)
+        total = getattr(progress_update, "total", None)
 
-        # Add digest info if available
-        if hasattr(progress, "digest"):
-            progress_data["digest"] = progress.digest
+        if total is not None and completed is not None and total > 0:
+            percentage = (completed / total) * 100
+            progress_data.update({"percentage": percentage, "bytes_downloaded": completed, "total_bytes": total})
 
-        # Store in cache
+        if hasattr(progress_update, "digest"):
+            progress_data["digest"] = progress_update.digest
+
         self._download_progress[model_name] = progress_data
 
-        # Check if download is complete
-        if progress.status == "success" or (hasattr(progress, "completed") and hasattr(progress, "total") and progress.completed is not None and progress.total is not None and progress.completed == progress.total):
+        if status_text == "success" or (total is not None and completed is not None and completed == total):
             final_data = {"status": "completed", "percentage": 100, "message": f"Model {model_name} downloaded successfully!"}
             self._download_progress[model_name] = final_data
             return final_data
@@ -452,7 +437,6 @@ class OllamaService:
 
     def _format_models_for_api(self, downloaded_models: List[str]) -> List[Dict[str, str]]:
         """Format downloaded models for API response."""
-        # Import OLLAMA_MODELS here to avoid circular imports
         from llm.models import OLLAMA_MODELS
 
         api_models = []

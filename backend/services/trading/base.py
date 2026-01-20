@@ -70,3 +70,11 @@ class TradingProvider(ABC):
     def cancel_order(self, order_id: str):
         """Cancel an order."""
         pass
+
+    @abstractmethod
+    def liquidate_all_positions(self, cancel_orders: bool = True) -> List[Dict[str, Any]]:
+        """
+        Emergency mass liquidation: 
+        Closes all positions and optionally cancels all open orders.
+        """
+        pass

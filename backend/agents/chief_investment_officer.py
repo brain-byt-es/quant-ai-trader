@@ -1,17 +1,9 @@
-
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
 
+from agents.types import ConsensusSignal
 from graph.state import AgentState
 from utils.llm import call_llm
-
-
-class ConsensusSignal(BaseModel):
-    action: str = Field(description="BUY, SELL, or HOLD")
-    quantity: int = Field(description="Suggested quantity")
-    confidence: float = Field(description="Confidence 0-1")
-    reasoning: str = Field(description="Consensus reasoning")
 
 
 def chief_investment_officer_agent(state: AgentState, agent_id: str = "chief_investment_officer"):
