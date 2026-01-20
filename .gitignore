@@ -1,0 +1,77 @@
+# --- General (Global) ---
+.DS_Store
+Thumbs.db
+*.log
+*.pem
+.env
+.env.local
+.env.*
+!.env.example
+
+# --- IDEs (Global) ---
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursorrules
+.cursorignore
+.cursorindexingignore
+
+# --- Python (Global & Backend) ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# --- Backend Specific ---
+backend/env/
+backend/venv/
+backend/.venv/
+backend/develop-eggs/
+backend/dist/
+backend/downloads/
+backend/eggs/
+backend/.eggs/
+backend/lib64/
+backend/parts/
+backend/sdist/
+backend/var/
+backend/wheels/
+backend/*.egg-info/
+backend/.installed.cfg
+backend/*.egg
+# Backend Database
+backend/*.db
+backend/*.db-journal
+backend/*.db-wal
+backend/*.db-shm
+backend/*.sqlite
+backend/*.sqlite3
+
+# --- Frontend Specific ---
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.*
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/versions
+frontend/coverage/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.vercel
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# --- Data & Outputs (Backend) ---
+backend/outputs/
+*.png
+*.pdf
+*.txt

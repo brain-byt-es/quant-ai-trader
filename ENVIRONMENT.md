@@ -1,0 +1,23 @@
+Python 3.13.11
+\n### Core Dependencies
+fastapi                      0.104.1
+fastapi-cli                  0.0.7
+langchain                    0.3.27
+langchain-anthropic          0.3.5
+langchain-core               0.3.83
+langchain-deepseek           0.1.4
+langchain-gigachat           0.3.12
+langchain-google-genai       2.1.12
+langchain-groq               0.2.3
+langchain-ollama             0.3.6
+langchain-openai             0.3.35
+langchain-text-splitters     0.3.11
+langchain-xai                0.2.5
+langgraph                    0.2.56
+langgraph-checkpoint         2.1.2
+langgraph-sdk                0.1.74
+numpy                        2.4.1
+pandas                       2.3.3
+pydantic                     2.12.5
+pydantic_core                2.41.5
+scipy                        1.17.0
