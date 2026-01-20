@@ -1,7 +1,6 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import List, Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database.models import ApiKey
@@ -13,7 +12,7 @@ class ApiKeyRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_or_update_api_key(self, provider: str, key_value: str, description: str = None, is_active: bool = True) -> ApiKey:
+    def create_or_update_api_key(self, provider: str, key_value: str, description: Optional[str] = None, is_active: bool = True) -> ApiKey:
         """Create a new API key or update existing one"""
         # Check if API key already exists for this provider
         existing_key = self.db.query(ApiKey).filter(ApiKey.provider == provider).first()
@@ -23,7 +22,7 @@ class ApiKeyRepository:
             existing_key.key_value = key_value
             existing_key.description = description
             existing_key.is_active = is_active
-            existing_key.updated_at = func.now()
+            existing_key.updated_at = datetime.now(UTC)
             self.db.commit()
             self.db.refresh(existing_key)
             return existing_key
@@ -37,16 +36,16 @@ class ApiKeyRepository:
 
     def get_api_key_by_provider(self, provider: str) -> Optional[ApiKey]:
         """Get API key by provider name"""
-        return self.db.query(ApiKey).filter(ApiKey.provider == provider, ApiKey.is_active == True).first()
+        return self.db.query(ApiKey).filter(ApiKey.provider == provider, ApiKey.is_active.is_(True)).first()
 
     def get_all_api_keys(self, include_inactive: bool = False) -> List[ApiKey]:
         """Get all API keys"""
         query = self.db.query(ApiKey)
         if not include_inactive:
-            query = query.filter(ApiKey.is_active == True)
+            query = query.filter(ApiKey.is_active.is_(True))
         return query.order_by(ApiKey.provider).all()
 
-    def update_api_key(self, provider: str, key_value: str = None, description: str = None, is_active: bool = None) -> Optional[ApiKey]:
+    def update_api_key(self, provider: str, key_value: Optional[str] = None, description: Optional[str] = None, is_active: Optional[bool] = None) -> Optional[ApiKey]:
         """Update an existing API key"""
         api_key = self.db.query(ApiKey).filter(ApiKey.provider == provider).first()
         if not api_key:
@@ -59,7 +58,7 @@ class ApiKeyRepository:
         if is_active is not None:
             api_key.is_active = is_active
 
-        api_key.updated_at = func.now()
+        api_key.updated_at = datetime.now(UTC)
         self.db.commit()
         self.db.refresh(api_key)
         return api_key
@@ -81,17 +80,17 @@ class ApiKeyRepository:
             return False
 
         api_key.is_active = False
-        api_key.updated_at = func.now()
+        api_key.updated_at = datetime.now(UTC)
         self.db.commit()
         return True
 
     def update_last_used(self, provider: str) -> bool:
         """Update the last_used timestamp for an API key"""
-        api_key = self.db.query(ApiKey).filter(ApiKey.provider == provider, ApiKey.is_active == True).first()
+        api_key = self.db.query(ApiKey).filter(ApiKey.provider == provider, ApiKey.is_active.is_(True)).first()
         if not api_key:
             return False
 
-        api_key.last_used = func.now()
+        api_key.last_used = datetime.now(UTC)
         self.db.commit()
         return True
 
@@ -99,6 +98,11 @@ class ApiKeyRepository:
         """Bulk create or update multiple API keys"""
         results = []
         for data in api_keys_data:
-            api_key = self.create_or_update_api_key(provider=data["provider"], key_value=data["key_value"], description=data.get("description"), is_active=data.get("is_active", True))
+            api_key = self.create_or_update_api_key(
+                provider=data["provider"], 
+                key_value=data["key_value"], 
+                description=data.get("description"), 
+                is_active=data.get("is_active", True)
+            )
             results.append(api_key)
         return results

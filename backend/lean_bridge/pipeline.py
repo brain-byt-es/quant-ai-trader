@@ -1,7 +1,6 @@
 from typing import List
-from lean_bridge.contracts import Insight, PortfolioTarget
+from lean_bridge.contracts import Insight, PortfolioTarget, AlphaModel
 from lean_bridge.context import AlgorithmContext
-from agents.base_alpha import AlphaModel
 
 def run_lean_pipeline(
     context: AlgorithmContext, 

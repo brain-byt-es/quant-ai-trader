@@ -7,7 +7,6 @@ from typing import Optional
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
 
 from core.workflow import create_investment_committee_workflow
 from models.events import CompleteEvent, ProgressUpdateEvent, StartEvent, UniverseEvent, RankingEvent

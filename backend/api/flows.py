@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -125,7 +125,7 @@ async def delete_flow(flow_id: int, db: Session = Depends(get_db)):
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
-async def duplicate_flow(flow_id: int, new_name: str = None, db: Session = Depends(get_db)):
+async def duplicate_flow(flow_id: int, new_name: Optional[str] = None, db: Session = Depends(get_db)):
     """Create a copy of an existing flow"""
     try:
         repo = FlowRepository(db)

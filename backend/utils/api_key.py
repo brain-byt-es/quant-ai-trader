@@ -1,4 +1,6 @@
-def get_api_key_from_state(state: dict, api_key_name: str) -> str:
+from typing import Optional
+
+def get_api_key_from_state(state: dict, api_key_name: str) -> Optional[str]:
     """Get an API key from the state object."""
     if state and state.get("metadata", {}).get("request"):
         request = state["metadata"]["request"]

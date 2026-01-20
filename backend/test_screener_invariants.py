@@ -1,11 +1,8 @@
-import pytest
 import pandas as pd
-import numpy as np
 from screener.engine import run_screener
 from screener.eligibility import filter_eligible, EligibilityConfig
 from screener.ranker import rank_cross_section, compute_composite_score
 from data.universe_provider import get_base_universe
-from data.market_data import get_snapshot, get_history
 
 def test_base_universe_loading():
     symbols = get_base_universe("US")
@@ -28,7 +25,7 @@ def test_eligibility_filter():
 
 def test_ranking_determinism():
     symbols = ["A", "B", "C"]
-    factor_df = pd.DataFrame({
+    pd.DataFrame({
         "momentum_12_1": [0.1, 0.2, 0.3],
         "volatility_20d": [0.15, 0.15, 0.15]
     }, index=symbols)
@@ -65,7 +62,7 @@ def test_screener_persistence():
     Base.metadata.create_all(bind=engine)
     
     # Run screener
-    res = run_screener(k=5)
+    run_screener(k=5)
     
     # Check DB
     session = SessionLocal()

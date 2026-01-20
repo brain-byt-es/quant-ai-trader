@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-import logging
+
+from typing import TypeVar, Type, cast, Any, Dict
 
 from pydantic import BaseModel
 
@@ -11,15 +12,17 @@ from graph.state import AgentState
 from llm.models import get_model, get_model_info, ModelProvider
 from utils.progress import progress
 
+T = TypeVar("T", bound=BaseModel)
+
 
 def call_llm(
-    prompt: any,
-    pydantic_model: type[BaseModel],
+    prompt: Any,
+    pydantic_model: Type[T],
     agent_name: str | None = None,
     state: AgentState | None = None,
     max_retries: int = 3,
     default_factory=None,
-) -> BaseModel:
+) -> T:
     """
     Makes an LLM call with retry logic, handling both JSON supported and non-JSON supported models.
 
@@ -57,7 +60,7 @@ def call_llm(
         print(f"Error: get_model returned None for {model_name} from {model_provider}")
         if default_factory:
             return default_factory()
-        return create_default_response(pydantic_model)
+        return cast(T, create_default_response(pydantic_model))
 
     # For non-JSON support models, we can use structured output
     if not (model_info and not model_info.has_json_mode()):
@@ -74,11 +77,15 @@ def call_llm(
 
             # For non-JSON support models, we need to extract and parse the JSON manually
             if model_info and not model_info.has_json_mode():
-                parsed_result = extract_json_from_response(result.content)
+                # Ensure we extract from string content
+                # Use cast(Any, result) to bypass Pylance attribute access check
+                content = str(getattr(cast(Any, result), "content", result))
+                    
+                parsed_result = extract_json_from_response(content)
                 if parsed_result:
                     return pydantic_model(**parsed_result)
             else:
-                return result
+                return cast(T, result)
 
         except Exception as e:
             if agent_name:
@@ -89,13 +96,13 @@ def call_llm(
                 # Use default_factory if provided, otherwise create a basic default
                 if default_factory:
                     return default_factory()
-                return create_default_response(pydantic_model)
+                return cast(T, create_default_response(pydantic_model))
 
     # This should never be reached due to the retry logic above
-    return create_default_response(pydantic_model)
+    return cast(T, create_default_response(pydantic_model))
 
 
-def create_default_response(model_class: type[BaseModel]) -> BaseModel:
+def create_default_response(model_class: Type[T]) -> T:
     """Creates a safe default response based on the model's fields."""
     default_values = {}
     for field_name, field in model_class.model_fields.items():
@@ -105,11 +112,11 @@ def create_default_response(model_class: type[BaseModel]) -> BaseModel:
             default_values[field_name] = 0.0
         elif field.annotation == int:
             default_values[field_name] = 0
-        elif hasattr(field.annotation, "__origin__") and field.annotation.__origin__ == dict:
+        elif field.annotation is not None and hasattr(field.annotation, "__origin__") and field.annotation.__origin__ == dict:
             default_values[field_name] = {}
         else:
             # For other types (like Literal), try to use the first allowed value
-            if hasattr(field.annotation, "__args__"):
+            if field.annotation is not None and hasattr(field.annotation, "__args__"):
                 default_values[field_name] = field.annotation.__args__[0]
             else:
                 default_values[field_name] = None
@@ -152,7 +159,8 @@ def get_agent_model_config(state, agent_name):
     model_provider = state.get("metadata", {}).get("model_provider") or ModelProvider.OPENAI.value
 
     # Convert enum to string if necessary
+    # Use cast to Any to satisfy Pylance
     if hasattr(model_provider, "value"):
-        model_provider = model_provider.value
+        model_provider = cast(Any, model_provider).value
 
     return model_name, str(model_provider)

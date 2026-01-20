@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class Price(BaseModel):
@@ -24,45 +23,45 @@ class FinancialMetrics(BaseModel):
     report_period: str
     period: str
     currency: str
-    market_cap: float | None
-    enterprise_value: float | None
-    price_to_earnings_ratio: float | None
-    price_to_book_ratio: float | None
-    price_to_sales_ratio: float | None
-    enterprise_value_to_ebitda_ratio: float | None
-    enterprise_value_to_revenue_ratio: float | None
-    free_cash_flow_yield: float | None
-    peg_ratio: float | None
-    gross_margin: float | None
-    operating_margin: float | None
-    net_margin: float | None
-    return_on_equity: float | None
-    return_on_assets: float | None
-    return_on_invested_capital: float | None
-    asset_turnover: float | None
-    inventory_turnover: float | None
-    receivables_turnover: float | None
-    days_sales_outstanding: float | None
-    operating_cycle: float | None
-    working_capital_turnover: float | None
-    current_ratio: float | None
-    quick_ratio: float | None
-    cash_ratio: float | None
-    operating_cash_flow_ratio: float | None
-    debt_to_equity: float | None
-    debt_to_assets: float | None
-    interest_coverage: float | None
-    revenue_growth: float | None
-    earnings_growth: float | None
-    book_value_growth: float | None
-    earnings_per_share_growth: float | None
-    free_cash_flow_growth: float | None
-    operating_income_growth: float | None
-    ebitda_growth: float | None
-    payout_ratio: float | None
-    earnings_per_share: float | None
-    book_value_per_share: float | None
-    free_cash_flow_per_share: float | None
+    market_cap: float | None = None
+    enterprise_value: float | None = None
+    price_to_earnings_ratio: float | None = None
+    price_to_book_ratio: float | None = None
+    price_to_sales_ratio: float | None = None
+    enterprise_value_to_ebitda_ratio: float | None = None
+    enterprise_value_to_revenue_ratio: float | None = None
+    free_cash_flow_yield: float | None = None
+    peg_ratio: float | None = None
+    gross_margin: float | None = None
+    operating_margin: float | None = None
+    net_margin: float | None = None
+    return_on_equity: float | None = None
+    return_on_assets: float | None = None
+    return_on_invested_capital: float | None = None
+    asset_turnover: float | None = None
+    inventory_turnover: float | None = None
+    receivables_turnover: float | None = None
+    days_sales_outstanding: float | None = None
+    operating_cycle: float | None = None
+    working_capital_turnover: float | None = None
+    current_ratio: float | None = None
+    quick_ratio: float | None = None
+    cash_ratio: float | None = None
+    operating_cash_flow_ratio: float | None = None
+    debt_to_equity: float | None = None
+    debt_to_assets: float | None = None
+    interest_coverage: float | None = None
+    revenue_growth: float | None = None
+    earnings_growth: float | None = None
+    book_value_growth: float | None = None
+    earnings_per_share_growth: float | None = None
+    free_cash_flow_growth: float | None = None
+    operating_income_growth: float | None = None
+    ebitda_growth: float | None = None
+    payout_ratio: float | None = None
+    earnings_per_share: float | None = None
+    book_value_per_share: float | None = None
+    free_cash_flow_per_share: float | None = None
 
 
 class FinancialMetricsResponse(BaseModel):
@@ -74,9 +73,28 @@ class LineItem(BaseModel):
     report_period: str
     period: str
     currency: str
+    
+    # Common fields often used in QuantEngine
+    revenue: float | None = None
+    net_income: float | None = None
+    depreciation_and_amortization: float | None = None
+    capital_expenditure: float | None = None
+    research_and_development: float | None = None
+    total_assets: float | None = None
+    total_liabilities: float | None = None
+    total_current_assets: float | None = None
+    total_current_liabilities: float | None = None
+    shareholders_equity: float | None = None
+    long_term_debt: float | None = None
+    short_term_debt: float | None = None
+    interest_expense: float | None = None
+    ebitda: float | None = None
+    ebit: float | None = None
+    outstanding_shares: float | None = None
+    free_cash_flow: float | None = None
 
     # Allow additional fields dynamically
-    model_config = {"extra": "allow"}
+    model_config = ConfigDict(extra="allow")
 
 
 class LineItemResponse(BaseModel):
@@ -106,11 +124,13 @@ class InsiderTradeResponse(BaseModel):
 class CompanyNews(BaseModel):
     ticker: str
     title: str
-    author: str
+    author: str | None = None
     source: str
     date: str
     url: str
+    summary: str | None = None
     sentiment: str | None = None
+    sentiment_score: float | None = None
 
 
 class CompanyNewsResponse(BaseModel):
@@ -175,4 +195,4 @@ class AgentStateData(BaseModel):
 
 class AgentStateMetadata(BaseModel):
     show_reasoning: bool = False
-    model_config = {"extra": "allow"}
+    model_config = ConfigDict(extra="allow")

@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import List, Dict
-from tools.api import market_data_client
+from typing import List
 
 def get_snapshot(symbols: List[str]) -> pd.DataFrame:
     """

@@ -2,14 +2,12 @@ import os
 import threading
 import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, cast
 
-import pandas as pd
 import requests
 
 from data.cache import get_cache
 from data.models import (
-    CompanyFactsResponse,
     CompanyNews,
     FinancialMetrics,
     InsiderTrade,
@@ -32,7 +30,7 @@ class AlphaVantageService(DataService):
         self.base_url = "https://www.alphavantage.co/query"
         self.cache = get_cache()
 
-    def _make_request(self, function: str, symbol: str = None, max_retries: int = 3, **kwargs) -> Dict:
+    def _make_request(self, function: str, symbol: Optional[str] = None, max_retries: int = 3, **kwargs) -> Dict[str, Any]:
         params = {"function": function, "apikey": self.api_key, **kwargs}
         if symbol:
             params["symbol"] = symbol
@@ -65,7 +63,7 @@ class AlphaVantageService(DataService):
                             continue
                         return {}
 
-                    return data
+                    return cast(Dict[str, Any], data)
                 except Exception as e:
                     print(f"Alpha Vantage Request Error (Attempt {attempt+1}): {e}")
                     if attempt < max_retries - 1:
@@ -129,30 +127,36 @@ class AlphaVantageService(DataService):
         metrics = []
         for li in line_items:
             try:
-                # Calculate basic ratios from line items
-                pe = 0.0
-                if hasattr(li, "net_income") and li.net_income and li.net_income > 0:
-                    # We'd need price at that time for historical PE,
-                    # but we'll use 0 or latest if not available easily here.
-                    pass
+                # Map values safely with defaults
+                ni = li.net_income or 0.0
+                rev = li.revenue or 0.0
+                ebit = li.ebit or 0.0
+                equity = li.shareholders_equity or 0.0
+                lt_debt = li.long_term_debt or 0.0
+                st_debt = li.short_term_debt or 0.0
+                assets = li.total_assets or 0.0
+                curr_assets = li.total_current_assets or 0.0
+                curr_liab = li.total_current_liabilities or 0.0
+                shares = li.outstanding_shares or 1.0 # Avoid div by zero
+                fcf = li.free_cash_flow or 0.0
+                liab = li.total_liabilities or 0.0
+                interest = li.interest_expense or 0.0
 
                 metric = FinancialMetrics(
                     ticker=ticker,
                     report_period=li.report_period,
                     period=period,
                     currency=li.currency,
-                    market_cap=0.0,  # Historical market cap is hard without historical prices
-                    revenue_growth=0.0,  # Needs calculation between periods
+                    market_cap=0.0,
+                    revenue_growth=0.0,
                     earnings_growth=0.0,
-                    # Map what we have
-                    return_on_equity=li.net_income / li.shareholders_equity if li.shareholders_equity else 0.0,
-                    net_margin=li.net_income / li.revenue if li.revenue else 0.0,
-                    operating_margin=li.ebit / li.revenue if li.revenue else 0.0,
-                    debt_to_equity=(li.long_term_debt + li.short_term_debt) / li.shareholders_equity if li.shareholders_equity else 0.0,
-                    current_ratio=li.total_current_assets / li.total_current_liabilities if li.total_current_liabilities else 0.0,
-                    earnings_per_share=li.net_income / li.outstanding_shares if li.outstanding_shares else 0.0,
-                    free_cash_flow_per_share=li.free_cash_flow / li.outstanding_shares if li.outstanding_shares else 0.0,
-                    # Add defaults for missing fields
+                    return_on_equity=ni / equity if equity else 0.0,
+                    net_margin=ni / rev if rev else 0.0,
+                    operating_margin=ebit / rev if rev else 0.0,
+                    debt_to_equity=(lt_debt + st_debt) / equity if equity else 0.0,
+                    current_ratio=curr_assets / curr_liab if curr_liab else 0.0,
+                    earnings_per_share=ni / shares if shares else 0.0,
+                    free_cash_flow_per_share=fcf / shares if shares else 0.0,
                     enterprise_value=0.0,
                     price_to_earnings_ratio=0.0,
                     price_to_book_ratio=0.0,
@@ -162,9 +166,9 @@ class AlphaVantageService(DataService):
                     free_cash_flow_yield=0.0,
                     peg_ratio=0.0,
                     gross_margin=0.0,
-                    return_on_assets=li.net_income / li.total_assets if li.total_assets else 0.0,
-                    return_on_invested_capital=li.ebit / (li.shareholders_equity + li.long_term_debt) if (li.shareholders_equity + li.long_term_debt) else 0.0,
-                    asset_turnover=li.revenue / li.total_assets if li.total_assets else 0.0,
+                    return_on_assets=ni / assets if assets else 0.0,
+                    return_on_invested_capital=ebit / (equity + lt_debt) if (equity + lt_debt) else 0.0,
+                    asset_turnover=rev / assets if assets else 0.0,
                     inventory_turnover=0.0,
                     receivables_turnover=0.0,
                     days_sales_outstanding=0.0,
@@ -173,15 +177,15 @@ class AlphaVantageService(DataService):
                     quick_ratio=0.0,
                     cash_ratio=0.0,
                     operating_cash_flow_ratio=0.0,
-                    debt_to_assets=li.total_liabilities / li.total_assets if li.total_assets else 0.0,
-                    interest_coverage=li.ebit / abs(li.interest_expense) if li.interest_expense else 0.0,
+                    debt_to_assets=liab / assets if assets else 0.0,
+                    interest_coverage=ebit / abs(interest) if interest else 0.0,
                     book_value_growth=0.0,
                     earnings_per_share_growth=0.0,
                     free_cash_flow_growth=0.0,
                     operating_income_growth=0.0,
                     ebitda_growth=0.0,
                     payout_ratio=0.0,
-                    book_value_per_share=li.shareholders_equity / li.outstanding_shares if li.outstanding_shares else 0.0,
+                    book_value_per_share=equity / shares if shares else 0.0,
                 )
                 metrics.append(metric)
             except Exception as e:
@@ -194,14 +198,13 @@ class AlphaVantageService(DataService):
             prev = metrics[i + 1]
             if prev.earnings_per_share and prev.earnings_per_share > 0:
                 curr.earnings_per_share_growth = (curr.earnings_per_share / prev.earnings_per_share) - 1
-            # Add other growth metrics...
 
         if metrics:
             self.cache.set_financial_metrics(cache_key, [m.model_dump() for m in metrics])
 
         return metrics
 
-    def _map_overview_to_metric(self, ticker: str, end_date: str, period: str, data: Dict) -> FinancialMetrics:
+    def _map_overview_to_metric(self, ticker: str, end_date: str, period: str, data: Dict[str, Any]) -> FinancialMetrics:
         return FinancialMetrics(
             ticker=ticker,
             report_period=end_date,
@@ -222,7 +225,6 @@ class AlphaVantageService(DataService):
             debt_to_equity=float(data.get("DebtToEquityTTM", 0) or 0) if "DebtToEquityTTM" in data else 0.0,
             book_value_per_share=float(data.get("BookValue", 0) or 0),
             earnings_per_share=float(data.get("EPS", 0) or 0),
-            # Missing fields or fields requiring other data
             enterprise_value=0.0,
             free_cash_flow_yield=0.0,
             return_on_invested_capital=0.0,
@@ -246,6 +248,7 @@ class AlphaVantageService(DataService):
             ebitda_growth=0.0,
             payout_ratio=0.0,
             free_cash_flow_per_share=0.0,
+            asset_turnover=0.0,
         )
 
     def search_line_items(self, ticker: str, line_items: List[str], end_date: str, period: str = "ttm", limit: int = 10) -> List[LineItem]:
@@ -253,19 +256,11 @@ class AlphaVantageService(DataService):
         if cached_data := self.cache.get_line_items(cache_key):
             return [LineItem(**item) for item in cached_data]
 
-        # Fetch Income Statement, Balance Sheet, Cash Flow
-        # Using annual by default or quarterly if period != annual
-        # AV returns 'annualReports' and 'quarterlyReports'
-
         income = self._make_request("INCOME_STATEMENT", symbol=ticker)
         balance = self._make_request("BALANCE_SHEET", symbol=ticker)
         cash = self._make_request("CASH_FLOW", symbol=ticker)
 
         report_key = "annualReports" if period == "annual" else "quarterlyReports"
-
-        # Merge data by date
-        # This is a bit complex to implement perfectly in one go, simplifying:
-        # We will just take the latest N reports from INCOME_STATEMENT as the base
 
         reports = []
         if income and report_key in income:
@@ -281,10 +276,9 @@ class AlphaVantageService(DataService):
                 try:
                     item = LineItem(
                         ticker=ticker,
-                        report_period=date,
+                        report_period=str(date),
                         period=period,
-                        currency=inc.get("reportedCurrency", "USD"),
-                        # Map common fields requested by QuantEngine
+                        currency=str(inc.get("reportedCurrency", "USD")),
                         revenue=float(inc.get("totalRevenue", 0) or 0),
                         net_income=float(inc.get("netIncome", 0) or 0),
                         depreciation_and_amortization=float(inc.get("depreciationAndAmortization", 0) or 0) or float(cf.get("depreciation", 0) or 0),
@@ -300,7 +294,8 @@ class AlphaVantageService(DataService):
                         interest_expense=float(inc.get("interestExpense", 0) or 0),
                         ebitda=float(inc.get("ebitda", 0) or 0),
                         ebit=float(inc.get("ebit", 0) or 0),
-                        outstanding_shares=float(bs.get("commonStockSharesOutstanding", 0) or 0),  # Often not in BS history accurately but latest is in OVERVIEW
+                        outstanding_shares=float(bs.get("commonStockSharesOutstanding", 0) or 0),
+                        free_cash_flow=float(cf.get("operatingCashflow", 0) or 0) - float(cf.get("capitalExpenditures", 0) or 0),
                     )
                     reports.append(item)
                 except Exception as e:
@@ -313,9 +308,6 @@ class AlphaVantageService(DataService):
         return reports
 
     def get_insider_trades(self, ticker: str, end_date: str, start_date: Optional[str] = None, limit: int = 1000) -> List[InsiderTrade]:
-        # Alpha Vantage doesn't have a direct Insider Trade endpoint in the free tier standard list usually,
-        # checking docs... INSIDER_TRANSACTIONS function exists but might be premium.
-        # For now return empty or implement if needed.
         return []
 
     def get_company_news(self, ticker: str, end_date: str, start_date: Optional[str] = None, limit: int = 1000) -> List[CompanyNews]:
@@ -323,17 +315,25 @@ class AlphaVantageService(DataService):
         if cached_data := self.cache.get_company_news(cache_key):
             return [CompanyNews(**news) for news in cached_data]
 
-        # NEWS_SENTIMENT endpoint
         data = self._make_request("NEWS_SENTIMENT", tickers=ticker, limit=limit)
         news_list = []
         if "feed" in data:
             for item in data["feed"]:
                 try:
-                    # Parse date string "20230101T123000"
                     date_str = item.get("time_published", "")
                     dt = datetime.strptime(date_str, "%Y%m%dT%H%M%S")
 
-                    news = CompanyNews(ticker=ticker, title=item.get("title", ""), date=dt.isoformat(), source=item.get("source", ""), url=item.get("url", ""), summary=item.get("summary", ""), sentiment=item.get("overall_sentiment_label", "neutral"), sentiment_score=float(item.get("overall_sentiment_score", 0)))
+                    news = CompanyNews(
+                        ticker=ticker, 
+                        title=str(item.get("title", "")), 
+                        date=dt.isoformat(), 
+                        source=str(item.get("source", "")), 
+                        url=str(item.get("url", "")), 
+                        summary=str(item.get("summary", "")), 
+                        sentiment=str(item.get("overall_sentiment_label", "neutral")), 
+                        sentiment_score=float(item.get("overall_sentiment_score", 0)),
+                        author="Alpha Vantage"
+                    )
                     news_list.append(news)
                 except Exception:
                     continue
@@ -345,18 +345,16 @@ class AlphaVantageService(DataService):
 
     def get_market_cap(self, ticker: str, end_date: str) -> Optional[float]:
         """Get market capitalization, checking cache first."""
-        # Try to find in metrics cache first (limit=1 call uses OVERVIEW)
         cache_key = f"{ticker}_ttm_{end_date}_1"
         if cached_data := self.cache.get_financial_metrics(cache_key):
             if isinstance(cached_data[0], dict):
-                return cached_data[0].get("market_cap")
+                return cast(float, cached_data[0].get("market_cap"))
             elif hasattr(cached_data[0], "market_cap"):
-                return cached_data[0].market_cap
+                return cast(float, cached_data[0].market_cap)
 
         data = self._make_request("OVERVIEW", symbol=ticker)
         mcap = float(data.get("MarketCapitalization", 0) or 0)
 
-        # If we fetched it, we might as well cache the whole overview as a metric
         try:
             metric = self._map_overview_to_metric(ticker, end_date, "ttm", data)
             self.cache.set_financial_metrics(cache_key, [metric.model_dump()])

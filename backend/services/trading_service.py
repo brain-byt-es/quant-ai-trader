@@ -1,4 +1,3 @@
-import json
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -9,7 +8,7 @@ from sqlalchemy.orm import Session
 # Load environment variables from root .env
 load_dotenv("../.env")
 
-from database.models import HedgeFundFlowRunCycle, Trade
+from database.models import Trade
 from services.trading.alpaca import AlpacaLiveProvider, AlpacaPaperProvider
 from services.trading.base import OrderSide, OrderStatus, OrderType, TradingProvider
 
@@ -20,7 +19,7 @@ class TradingService:
         self.mode = os.environ.get("TRADING_MODE", "paper").lower()
         self.provider = self._get_provider()
 
-    def _get_provider(self) -> TradingProvider:
+    def _get_provider(self) -> Optional[TradingProvider]:
         api_key = os.environ.get("ALPACA_API_KEY")
         api_secret = os.environ.get("ALPACA_SECRET_KEY")
 
@@ -56,8 +55,6 @@ class TradingService:
         self.db.refresh(trade)
 
         # Auto-execute if paper mode?
-        # Prompt says: "Live trades remain in PENDING_APPROVAL... manual_approval_timestamp is present."
-        # Implies paper trades can go through.
         if self.mode == "paper":
             self.execute_trade(trade.id)
 
@@ -94,7 +91,6 @@ class TradingService:
             trade.execution_time = datetime.now()
 
             # For simplicity, assume submitted = executed for now, or use a background poller to update status
-            # In a real system, we'd poll or use webhooks.
             if order.status == OrderStatus.FILLED:
                 trade.status = "EXECUTED"
                 trade.execution_price = str(order.filled_avg_price)

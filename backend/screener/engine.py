@@ -1,5 +1,4 @@
-from typing import List, Dict, Optional
-import pandas as pd
+from typing import Dict, Optional
 from data.universe_provider import get_base_universe
 from data.market_data import get_snapshot, get_history
 from screener.eligibility import filter_eligible, EligibilityConfig

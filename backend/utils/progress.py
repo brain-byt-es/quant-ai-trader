@@ -1,9 +1,8 @@
 import threading
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Any
 
 from rich.console import Console
-from rich.live import Live
 from rich.style import Style
 from rich.table import Table
 from rich.text import Text
@@ -15,7 +14,7 @@ class AgentProgress:
     """Manages progress tracking for multiple agents."""
 
     def __init__(self):
-        self.agent_status: Dict[str, Dict[str, str]] = {}
+        self.agent_status: Dict[str, Dict[str, Any]] = {}
         self.table = Table(show_header=False, box=None, padding=(0, 1))
         # Disable Live display for web/background contexts
         self.live = None 

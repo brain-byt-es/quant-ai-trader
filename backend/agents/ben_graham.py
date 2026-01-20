@@ -13,10 +13,15 @@ class BenGrahamAlphaModel(PersonaAlphaModel):
     def __init__(self):
         super().__init__("ben_graham")
 
-    def update(self, state: AgentState, ticker: str) -> list[Insight]:
+    def update(self, state: AgentState, data: str) -> list[Insight]:
+        ticker = data
+        ticker = data
         quant_scorecard = state["data"].get("quant_scorecard", {})
         config = ANALYST_CONFIG_RULES.get(self.agent_id)
-        factor_rules = config["factor_rules"]
+        if not config:
+            return []
+            
+        factor_rules = config.get("factor_rules", [])
 
         progress.update_status(self.agent_id, ticker, "Calculating Margin of Safety")
         ticker_data = quant_scorecard.get(ticker, {})

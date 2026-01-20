@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from datetime import datetime, timedelta, UTC
+from typing import Any, Callable, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,8 @@ from tools.api import (
 )
 
 
+from models.schemas import BaseHedgeFundRequest
+
 class BacktestService:
     """
     Core backtesting service that focuses purely on backtesting logic.
@@ -25,7 +27,7 @@ class BacktestService:
 
     def __init__(
         self,
-        graph,
+        graph: Any,
         portfolio: dict,
         tickers: List[str],
         start_date: str,
@@ -33,20 +35,10 @@ class BacktestService:
         initial_capital: float,
         model_name: str = "gpt-4.1",
         model_provider: str = "OpenAI",
-        request: dict = {},
+        request: Optional[BaseHedgeFundRequest] = None,
     ):
         """
         Initialize the backtest service.
-
-        :param graph: Pre-compiled LangGraph graph for trading decisions.
-        :param portfolio: Initial portfolio state.
-        :param tickers: List of tickers to backtest.
-        :param start_date: Start date string (YYYY-MM-DD).
-        :param end_date: End date string (YYYY-MM-DD).
-        :param initial_capital: Starting portfolio cash.
-        :param model_name: Which LLM model name to use.
-        :param model_provider: Which LLM provider.
-        :param request: Request object containing API keys and other metadata.
         """
         self.graph = graph
         self.portfolio = portfolio
@@ -54,10 +46,10 @@ class BacktestService:
         self.start_date = start_date
         self.end_date = end_date
         self.initial_capital = initial_capital
-        self.model_name = model_name
-        self.model_provider = model_provider
+        self.model_name = model_name or "gpt-4.1"
+        self.model_provider = model_provider or "OpenAI"
         self.request = request
-        self.portfolio_values = []
+        self.portfolio_values: List[Dict[str, Any]] = []
 
     def execute_trade(self, ticker: str, action: str, quantity: float, current_price: float) -> int:
         """
@@ -67,16 +59,16 @@ class BacktestService:
         if quantity <= 0:
             return 0
 
-        quantity = int(quantity)  # force integer shares
+        quantity_int = int(quantity)  # force integer shares
         position = self.portfolio["positions"][ticker]
 
         if action == "buy":
-            cost = quantity * current_price
+            cost = quantity_int * current_price
             if cost <= self.portfolio["cash"]:
                 # Weighted average cost basis for the new total
                 old_shares = position["long"]
                 old_cost_basis = position["long_cost_basis"]
-                new_shares = quantity
+                new_shares = quantity_int
                 total_shares = old_shares + new_shares
 
                 if total_shares > 0:
@@ -84,9 +76,9 @@ class BacktestService:
                     total_new_cost = cost
                     position["long_cost_basis"] = (total_old_cost + total_new_cost) / total_shares
 
-                position["long"] += quantity
+                position["long"] += quantity_int
                 self.portfolio["cash"] -= cost
-                return quantity
+                return quantity_int
             else:
                 # Calculate maximum affordable quantity
                 max_quantity = int(self.portfolio["cash"] / current_price)
@@ -107,28 +99,28 @@ class BacktestService:
                 return 0
 
         elif action == "sell":
-            quantity = min(quantity, position["long"])
-            if quantity > 0:
+            quantity_to_sell = min(quantity_int, position["long"])
+            if quantity_to_sell > 0:
                 avg_cost_per_share = position["long_cost_basis"] if position["long"] > 0 else 0
-                realized_gain = (current_price - avg_cost_per_share) * quantity
+                realized_gain = (current_price - avg_cost_per_share) * quantity_to_sell
                 self.portfolio["realized_gains"][ticker]["long"] += realized_gain
 
-                position["long"] -= quantity
-                self.portfolio["cash"] += quantity * current_price
+                position["long"] -= quantity_to_sell
+                self.portfolio["cash"] += quantity_to_sell * current_price
 
                 if position["long"] == 0:
                     position["long_cost_basis"] = 0.0
 
-                return quantity
+                return quantity_to_sell
 
         elif action == "short":
-            proceeds = current_price * quantity
+            proceeds = current_price * quantity_int
             margin_required = proceeds * self.portfolio["margin_requirement"]
             if margin_required <= self.portfolio["cash"]:
                 # Weighted average short cost basis
                 old_short_shares = position["short"]
                 old_cost_basis = position["short_cost_basis"]
-                new_shares = quantity
+                new_shares = quantity_int
                 total_shares = old_short_shares + new_shares
 
                 if total_shares > 0:
@@ -136,13 +128,13 @@ class BacktestService:
                     total_new_cost = current_price * new_shares
                     position["short_cost_basis"] = (total_old_cost + total_new_cost) / total_shares
 
-                position["short"] += quantity
+                position["short"] += quantity_int
                 position["short_margin_used"] += margin_required
                 self.portfolio["margin_used"] += margin_required
 
                 self.portfolio["cash"] += proceeds
                 self.portfolio["cash"] -= margin_required
-                return quantity
+                return quantity_int
             else:
                 margin_ratio = self.portfolio["margin_requirement"]
                 if margin_ratio > 0:
@@ -173,20 +165,20 @@ class BacktestService:
                 return 0
 
         elif action == "cover":
-            quantity = min(quantity, position["short"])
-            if quantity > 0:
-                cover_cost = quantity * current_price
+            quantity_to_cover = min(quantity_int, position["short"])
+            if quantity_to_cover > 0:
+                cover_cost = quantity_to_cover * current_price
                 avg_short_price = position["short_cost_basis"] if position["short"] > 0 else 0
-                realized_gain = (avg_short_price - current_price) * quantity
+                realized_gain = (avg_short_price - current_price) * quantity_to_cover
 
                 if position["short"] > 0:
-                    portion = quantity / position["short"]
+                    portion = quantity_to_cover / position["short"]
                 else:
                     portion = 1.0
 
                 margin_to_release = portion * position["short_margin_used"]
 
-                position["short"] -= quantity
+                position["short"] -= quantity_to_cover
                 position["short_margin_used"] -= margin_to_release
                 self.portfolio["margin_used"] -= margin_to_release
 
@@ -199,7 +191,7 @@ class BacktestService:
                     position["short_cost_basis"] = 0.0
                     position["short_margin_used"] = 0.0
 
-                return quantity
+                return quantity_to_cover
 
         return 0
 
@@ -219,14 +211,18 @@ class BacktestService:
             if position["short"] > 0:
                 total_value -= position["short"] * price
 
-        return total_value
+        return float(total_value)
 
     def prefetch_data(self):
         """Pre-fetch all data needed for the backtest period."""
         end_date_dt = datetime.strptime(self.end_date, "%Y-%m-%d")
         start_date_dt = end_date_dt - relativedelta(years=1)
         start_date_str = start_date_dt.strftime("%Y-%m-%d")
-        api_key = self.request.api_keys.get("FINANCIAL_DATASETS_API_KEY")
+        
+        # Safe access to api_keys
+        api_key = None
+        if self.request and self.request.api_keys:
+            api_key = self.request.api_keys.get("FINANCIAL_DATASETS_API_KEY")
 
         for ticker in self.tickers:
             get_prices(ticker, start_date_str, self.end_date, api_key=api_key)
@@ -250,7 +246,7 @@ class BacktestService:
 
         # Sharpe ratio
         if std_excess_return > 1e-12:
-            performance_metrics["sharpe_ratio"] = np.sqrt(252) * (mean_excess_return / std_excess_return)
+            performance_metrics["sharpe_ratio"] = float(np.sqrt(252) * (mean_excess_return / std_excess_return))
         else:
             performance_metrics["sharpe_ratio"] = 0.0
 
@@ -259,7 +255,7 @@ class BacktestService:
         if len(negative_returns) > 0:
             downside_std = negative_returns.std()
             if downside_std > 1e-12:
-                performance_metrics["sortino_ratio"] = np.sqrt(252) * (mean_excess_return / downside_std)
+                performance_metrics["sortino_ratio"] = float(np.sqrt(252) * (mean_excess_return / downside_std))
             else:
                 performance_metrics["sortino_ratio"] = None if mean_excess_return > 0 else 0
         else:
@@ -270,11 +266,16 @@ class BacktestService:
         drawdown = (values_df["Portfolio Value"] - rolling_max) / rolling_max
 
         if len(drawdown) > 0:
-            min_drawdown = drawdown.min()
+            min_drawdown = float(drawdown.min())
             performance_metrics["max_drawdown"] = min_drawdown * 100
 
             if min_drawdown < 0:
-                performance_metrics["max_drawdown_date"] = drawdown.idxmin().strftime("%Y-%m-%d")
+                idx = drawdown.idxmin()
+                # Use cast to Any to satisfy Pylance regarding strftime/str access
+                if hasattr(idx, "strftime"):
+                    performance_metrics["max_drawdown_date"] = cast(Any, idx).strftime("%Y-%m-%d")
+                else:
+                    performance_metrics["max_drawdown_date"] = str(idx)
             else:
                 performance_metrics["max_drawdown_date"] = None
         else:
@@ -341,8 +342,8 @@ class BacktestService:
                         if price_data.empty:
                             missing_data = True
                             break
-                        current_prices[ticker] = price_data.iloc[-1]["close"]
-                    except Exception as e:
+                        current_prices[ticker] = float(price_data.iloc[-1]["close"])
+                    except Exception:
                         missing_data = True
                         break
 
@@ -387,8 +388,8 @@ class BacktestService:
             # Execute trades based on decisions
             executed_trades = {}
             for ticker in self.tickers:
-                decision = decisions.get(ticker, {"action": "hold", "quantity": 0})
-                action, quantity = decision.get("action", "hold"), decision.get("quantity", 0)
+                decision = (decisions or {}).get(ticker, {"action": "hold", "quantity": 0})
+                action, quantity = str(decision.get("action", "hold")), float(decision.get("quantity", 0))
                 executed_quantity = self.execute_trade(ticker, action, quantity, current_prices[ticker])
                 executed_trades[ticker] = executed_quantity
 
@@ -442,16 +443,16 @@ class BacktestService:
                 "ticker_details": [],
             }
 
-            # Build ticker details (similar to CLI format_backtest_row)
+            # Build ticker details
             for ticker in self.tickers:
                 ticker_signals = {}
-                for agent_name, signals in analyst_signals.items():
+                for agent_name, signals in (analyst_signals or {}).items():
                     if ticker in signals:
                         ticker_signals[agent_name] = signals[ticker]
 
-                bullish_count = len([s for s in ticker_signals.values() if s.get("signal", "").lower() == "bullish"])
-                bearish_count = len([s for s in ticker_signals.values() if s.get("signal", "").lower() == "bearish"])
-                neutral_count = len([s for s in ticker_signals.values() if s.get("signal", "").lower() == "neutral"])
+                bullish_count = len([s for s in ticker_signals.values() if str(s.get("signal", "")).lower() == "bullish"])
+                bearish_count = len([s for s in ticker_signals.values() if str(s.get("signal", "")).lower() == "bearish"])
+                neutral_count = len([s for s in ticker_signals.values() if str(s.get("signal", "")).lower() == "neutral"])
 
                 # Calculate net position value
                 pos = self.portfolio["positions"][ticker]
@@ -460,8 +461,8 @@ class BacktestService:
                 net_position_value = long_val - short_val
 
                 # Get the action and quantity from the decisions
-                action = decisions.get(ticker, {}).get("action", "hold")
-                quantity = executed_trades.get(ticker, 0)
+                action = str((decisions or {}).get(ticker, {}).get("action", "hold"))
+                quantity = int(executed_trades.get(ticker, 0))
 
                 ticker_detail = {
                     "ticker": ticker,

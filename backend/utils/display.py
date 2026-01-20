@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any, List, Optional
 
 from colorama import Fore, Style
 from tabulate import tabulate
@@ -347,15 +348,15 @@ def format_backtest_row(
     short_shares: float = 0,
     position_value: float = 0,
     is_summary: bool = False,
-    total_value: float = None,
-    return_pct: float = None,
-    cash_balance: float = None,
-    total_position_value: float = None,
-    sharpe_ratio: float = None,
-    sortino_ratio: float = None,
-    max_drawdown: float = None,
+    total_value: Optional[float] = None,
+    return_pct: Optional[float] = None,
+    cash_balance: Optional[float] = None,
+    total_position_value: Optional[float] = None,
+    sharpe_ratio: Optional[float] = None,
+    sortino_ratio: Optional[float] = None,
+    max_drawdown: Optional[float] = None,
     benchmark_return_pct: float | None = None,
-) -> list[any]:
+) -> List[Any]:
     """Format a row for the backtest results table"""
     # Color the action
     action_color = {
@@ -367,11 +368,18 @@ def format_backtest_row(
     }.get(action.upper(), Fore.WHITE)
 
     if is_summary:
-        return_color = Fore.GREEN if return_pct >= 0 else Fore.RED
+        return_color = Fore.GREEN if return_pct is not None and return_pct >= 0 else Fore.RED
         benchmark_str = ""
         if benchmark_return_pct is not None:
             bench_color = Fore.GREEN if benchmark_return_pct >= 0 else Fore.RED
             benchmark_str = f"{bench_color}{benchmark_return_pct:+.2f}%{Style.RESET_ALL}"
+        
+        # Safe format for floats that can be None
+        f_total_pos = total_position_value if total_position_value is not None else 0.0
+        f_cash = cash_balance if cash_balance is not None else 0.0
+        f_total_val = total_value if total_value is not None else 0.0
+        f_return = return_pct if return_pct is not None else 0.0
+
         return [
             date,
             f"{Fore.WHITE}{Style.BRIGHT}PORTFOLIO SUMMARY{Style.RESET_ALL}",
@@ -380,10 +388,10 @@ def format_backtest_row(
             "",  # Price
             "",  # Long Shares
             "",  # Short Shares
-            f"{Fore.YELLOW}${total_position_value:,.2f}{Style.RESET_ALL}",  # Total Position Value
-            f"{Fore.CYAN}${cash_balance:,.2f}{Style.RESET_ALL}",  # Cash Balance
-            f"{Fore.WHITE}${total_value:,.2f}{Style.RESET_ALL}",  # Total Value
-            f"{return_color}{return_pct:+.2f}%{Style.RESET_ALL}",  # Return
+            f"{Fore.YELLOW}${f_total_pos:,.2f}{Style.RESET_ALL}",  # Total Position Value
+            f"{Fore.CYAN}${f_cash:,.2f}{Style.RESET_ALL}",  # Cash Balance
+            f"{Fore.WHITE}${f_total_val:,.2f}{Style.RESET_ALL}",  # Total Value
+            f"{return_color}{f_return:+.2f}%{Style.RESET_ALL}",  # Return
             f"{Fore.YELLOW}{sharpe_ratio:.2f}{Style.RESET_ALL}" if sharpe_ratio is not None else "",  # Sharpe Ratio
             f"{Fore.YELLOW}{sortino_ratio:.2f}{Style.RESET_ALL}" if sortino_ratio is not None else "",  # Sortino Ratio
             f"{Fore.RED}{max_drawdown:.2f}%{Style.RESET_ALL}" if max_drawdown is not None else "",  # Max Drawdown (signed)

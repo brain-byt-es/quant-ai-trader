@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 from database.connection import SessionLocal
 from services.data.data_service import get_data_service
@@ -47,7 +46,8 @@ async def health_check():
     # 3. Check Alpha Vantage (or configured Data Provider)
     try:
         data_service = get_data_service()
-        if hasattr(data_service, "api_key") and data_service.api_key:
+        # Use getattr to avoid Pylance attribute access issue on abstract base class
+        if getattr(data_service, "api_key", None):
             # In a real run, you'd check a ping or quota, but we'll flag as connected if key exists
             status["services"]["Alpha Vantage"] = "Connected"
         else:

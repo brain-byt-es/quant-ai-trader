@@ -4,8 +4,7 @@ sys.path.append(str(Path(__file__).parent))
 
 import asyncio
 from datetime import datetime, timedelta
-import numpy as np
-from lean_bridge.contracts import Insight, InsightDirection, PortfolioTarget
+from lean_bridge.contracts import Insight, InsightDirection
 from lean_bridge.context import AlgorithmContext
 from core.portfolio_manager import MeanVarianceOptimizationPortfolioConstructionModel
 from core.execution_planner import ExecutionPlanner

@@ -5,7 +5,7 @@ from agents.portfolio_manager import portfolio_management_agent
 from agents.risk_manager import risk_management_agent
 from core.quant_engine import quant_engine_node
 from graph.state import AgentState
-from utils.analysts import ANALYST_CONFIG, get_analyst_nodes
+from utils.analysts import get_analyst_nodes
 
 
 def start(state: AgentState):

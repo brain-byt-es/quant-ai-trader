@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 def compute_momentum_12_1(history_df: pd.DataFrame) -> pd.Series:
     """12-1 momentum (12m return excluding last month)."""

@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import List, Dict
+from typing import List
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from lean_bridge.contracts import Insight, PortfolioTarget, InsightDirection
+from lean_bridge.contracts import Insight, PortfolioTarget
 from lean_bridge.insight_collection import InsightCollection
 from lean_bridge.context import AlgorithmContext
 

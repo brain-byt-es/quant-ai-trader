@@ -2,7 +2,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, Any, Dict
 
 import pandas as pd
 import requests
@@ -78,11 +78,12 @@ class FinancialDatasetsService(DataService):
         self.cache = get_cache()
         self.base_url = "https://api.financialdatasets.ai"
 
-    def _make_api_request(self, url: str, method: str = "GET", json_data: dict = None, max_retries: int = 3) -> requests.Response:
+    def _make_api_request(self, url: str, method: str = "GET", json_data: Optional[Dict[str, Any]] = None, max_retries: int = 3) -> requests.Response:
         headers = {}
         if self.api_key:
             headers["X-API-KEY"] = self.api_key
 
+        response = requests.Response()  # Initialize to avoid unbound errors
         for attempt in range(max_retries + 1):
             if method.upper() == "POST":
                 response = requests.post(url, headers=headers, json=json_data)
@@ -140,11 +141,6 @@ class FinancialDatasetsService(DataService):
             return []
 
     def search_line_items(self, ticker: str, line_items: List[str], end_date: str, period: str = "ttm", limit: int = 10) -> List[LineItem]:
-        # Caching logic for search results is tricky due to varying line_items list
-        # For now, we skip caching or rely on the underlying simple cache if we can construct a stable key
-        # But existing cache implementation expects specific structure.
-        # We will follow the existing implementation style.
-
         url = f"{self.base_url}/financials/search/line-items"
         body = {
             "tickers": [ticker],
@@ -270,8 +266,5 @@ class FinancialDatasetsService(DataService):
 def get_data_service(provider: str = "financialdatasets") -> DataService:
     if provider == "financialdatasets":
         return FinancialDatasetsService()
-    # Placeholder for other providers
-    # elif provider == "alphavantage":
-    #     return AlphaVantageService()
     else:
         raise ValueError(f"Unknown provider: {provider}")

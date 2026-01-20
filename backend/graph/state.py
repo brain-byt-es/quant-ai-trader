@@ -3,17 +3,18 @@ import operator
 
 from langchain_core.messages import BaseMessage
 from typing_extensions import Annotated, Sequence, TypedDict
+from typing import Any
 
 
-def merge_dicts(a: dict[str, any], b: dict[str, any]) -> dict[str, any]:
+def merge_dicts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     return {**a, **b}
 
 
 # Define agent state
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
-    data: Annotated[dict[str, any], merge_dicts]
-    metadata: Annotated[dict[str, any], merge_dicts]
+    data: Annotated[dict[str, Any], merge_dicts]
+    metadata: Annotated[dict[str, Any], merge_dicts]
 
 
 def show_agent_reasoning(output, agent_name):
@@ -22,8 +23,8 @@ def show_agent_reasoning(output, agent_name):
     def convert_to_serializable(obj):
         if hasattr(obj, "to_dict"):  # Handle Pandas Series/DataFrame
             return obj.to_dict()
-        elif hasattr(obj, "__dict__"):  # Handle custom objects
-            return obj.__dict__
+        elif hasattr(obj, "__dict__"):
+            return obj.__dict__  # Handle custom objects
         elif isinstance(obj, (int, float, bool, str)):
             return obj
         elif isinstance(obj, (list, tuple)):

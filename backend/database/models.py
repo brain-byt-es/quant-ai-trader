@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -8,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from .connection import Base
@@ -18,23 +24,23 @@ class HedgeFundFlow(Base):
 
     __tablename__ = "hedge_fund_flows"
 
-    id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     # Flow metadata
-    name = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # React Flow state
-    nodes = Column(JSON, nullable=False)  # Store React Flow nodes as JSON
-    edges = Column(JSON, nullable=False)  # Store React Flow edges as JSON
-    viewport = Column(JSON, nullable=True)  # Store viewport state (zoom, x, y)
-    data = Column(JSON, nullable=True)  # Store node internal states (tickers, models, etc.)
+    nodes: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    edges: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    viewport: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # Additional metadata
-    is_template = Column(Boolean, default=False)  # Mark as template for reuse
-    tags = Column(JSON, nullable=True)  # Store tags for categorization
+    is_template: Mapped[bool] = mapped_column(Boolean, default=False)
+    tags: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
 
 
 class HedgeFundFlowRun(Base):
@@ -42,30 +48,30 @@ class HedgeFundFlowRun(Base):
 
     __tablename__ = "hedge_fund_flow_runs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    flow_id = Column(Integer, ForeignKey("hedge_fund_flows.id"), nullable=False, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    flow_id: Mapped[int] = mapped_column(Integer, ForeignKey("hedge_fund_flows.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     # Run execution tracking
-    status = Column(String(50), nullable=False, default="IDLE")  # IDLE, IN_PROGRESS, COMPLETE, ERROR
-    started_at = Column(DateTime(timezone=True), nullable=True)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="IDLE")
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Run configuration
-    trading_mode = Column(String(50), nullable=False, default="one-time")  # one-time, continuous, advisory
-    schedule = Column(String(50), nullable=True)  # hourly, daily, weekly (for continuous mode)
-    duration = Column(String(50), nullable=True)  # 1day, 1week, 1month (for continuous mode)
+    trading_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="one-time")
+    schedule: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    duration: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Run data
-    request_data = Column(JSON, nullable=True)  # Store the request parameters (tickers, agents, models, etc.)
-    initial_portfolio = Column(JSON, nullable=True)  # Store initial portfolio state
-    final_portfolio = Column(JSON, nullable=True)  # Store final portfolio state
-    results = Column(JSON, nullable=True)  # Store the output/results from the run
-    error_message = Column(Text, nullable=True)  # Store error details if run failed
+    request_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    initial_portfolio: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    final_portfolio: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    results: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Metadata
-    run_number = Column(Integer, nullable=False, default=1)  # Sequential run number for this flow
+    run_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class HedgeFundFlowRunCycle(Base):
@@ -73,38 +79,38 @@ class HedgeFundFlowRunCycle(Base):
 
     __tablename__ = "hedge_fund_flow_run_cycles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    flow_run_id = Column(Integer, ForeignKey("hedge_fund_flow_runs.id"), nullable=False, index=True)
-    cycle_number = Column(Integer, nullable=False)  # 1, 2, 3, etc. within the run
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    flow_run_id: Mapped[int] = mapped_column(Integer, ForeignKey("hedge_fund_flow_runs.id"), nullable=False, index=True)
+    cycle_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Timing
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    started_at = Column(DateTime(timezone=True), nullable=False)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Analysis results
-    analyst_signals = Column(JSON, nullable=True)  # All agent decisions/signals
-    trading_decisions = Column(JSON, nullable=True)  # Portfolio manager decisions
-    executed_trades = Column(JSON, nullable=True)  # Actual trades executed (paper trading)
+    analyst_signals: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    trading_decisions: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    executed_trades: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, nullable=True)
 
     # Portfolio state after this cycle
-    portfolio_snapshot = Column(JSON, nullable=True)  # Cash, positions, performance metrics
+    portfolio_snapshot: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # Performance metrics for this cycle
-    performance_metrics = Column(JSON, nullable=True)  # Returns, sharpe ratio, etc.
+    performance_metrics: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # Execution tracking
-    status = Column(String(50), nullable=False, default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ERROR
-    error_message = Column(Text, nullable=True)  # Store error details if cycle failed
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="IN_PROGRESS")
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Cost tracking
-    llm_calls_count = Column(Integer, nullable=True, default=0)  # Number of LLM calls made
-    api_calls_count = Column(Integer, nullable=True, default=0)  # Number of financial API calls made
-    estimated_cost = Column(String(20), nullable=True)  # Estimated cost in USD
+    llm_calls_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    api_calls_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    estimated_cost: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Metadata
-    trigger_reason = Column(String(100), nullable=True)  # scheduled, manual, market_event, etc.
-    market_conditions = Column(JSON, nullable=True)  # Market data snapshot at cycle start
+    trigger_reason: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    market_conditions: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
 
 class ApiKey(Base):
@@ -112,18 +118,18 @@ class ApiKey(Base):
 
     __tablename__ = "api_keys"
 
-    id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     # API key details
-    provider = Column(String(100), nullable=False, unique=True, index=True)  # e.g., "ANTHROPIC_API_KEY"
-    key_value = Column(Text, nullable=False)  # The actual API key (encrypted in production)
-    is_active = Column(Boolean, default=True)  # Enable/disable without deletion
+    provider: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    key_value: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Optional metadata
-    description = Column(Text, nullable=True)  # Human-readable description
-    last_used = Column(DateTime(timezone=True), nullable=True)  # Track usage
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_used: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Trade(Base):
@@ -131,36 +137,35 @@ class Trade(Base):
 
     __tablename__ = "trades"
 
-    id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     # Link to the flow run that generated this trade
-    flow_run_id = Column(Integer, ForeignKey("hedge_fund_flow_runs.id"), nullable=True, index=True)
+    flow_run_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("hedge_fund_flow_runs.id"), nullable=True, index=True)
 
     # Trade Details
-    ticker = Column(String(20), nullable=False, index=True)
-    action = Column(String(10), nullable=False)  # BUY, SELL, HOLD
-    quantity = Column(Integer, nullable=False)
-    order_type = Column(String(20), default="market")  # market, limit
-    limit_price = Column(String(20), nullable=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_type: Mapped[str] = mapped_column(String(20), default="market")
+    limit_price: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Analysis & Consensus
-    risk_score = Column(String(20), nullable=True)  # Float stored as string or just float
-    persona_rationale = Column(JSON, nullable=True)  # The debate/consensus details
+    risk_score: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    persona_rationale: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # Safety Gate & Execution Status
-    status = Column(String(50), nullable=False, default="PENDING_APPROVAL", index=True)
-    # Statuses: PENDING_APPROVAL, APPROVED, REJECTED, SUBMITTED, EXECUTED, FAILED
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_APPROVAL", index=True)
 
-    manual_approval_timestamp = Column(DateTime(timezone=True), nullable=True)
-    approved_by = Column(String(100), nullable=True)  # User who approved
+    manual_approval_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Execution Details (from Brokerage)
-    brokerage_order_id = Column(String(100), nullable=True, index=True)
-    execution_price = Column(String(20), nullable=True)
-    execution_time = Column(DateTime(timezone=True), nullable=True)
-    error_message = Column(Text, nullable=True)
+    brokerage_order_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    execution_price: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    execution_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class ScreenerRun(Base):
@@ -168,22 +173,22 @@ class ScreenerRun(Base):
 
     __tablename__ = "screener_runs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    market = Column(String(50), nullable=False)
-    k = Column(Integer, nullable=False)
+    market: Mapped[str] = mapped_column(String(50), nullable=False)
+    k: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    base_count = Column(Integer, nullable=False)
-    eligible_count = Column(Integer, nullable=False)
+    base_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    eligible_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Store top K and full factor table
-    selected_symbols = Column(JSON, nullable=False)
-    ranking_data = Column(JSON, nullable=False)  # Full result object including scores_table
+    selected_symbols: Mapped[List[str]] = mapped_column(JSON, nullable=False)
+    ranking_data: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     # Configuration used
-    config = Column(JSON, nullable=True)
-    weights = Column(JSON, nullable=True)
+    config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    weights: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
 
 class ProposedTrade(Base):
@@ -191,12 +196,12 @@ class ProposedTrade(Base):
 
     __tablename__ = "proposed_trades"
 
-    id = Column(Integer, primary_key=True, index=True)
-    ticker = Column(String(20), nullable=False)
-    action = Column(String(10), nullable=False)  # BUY/SELL
-    quantity = Column(Integer, nullable=False)
-    persona_logic = Column(JSON, nullable=True)  # Stores the summary of the debate
-    status = Column(String(50), default="PENDING")  # PENDING, APPROVED, REJECTED, EXECUTED
-    approval_token = Column(String(100), unique=True, index=True, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    flow_run_id = Column(Integer, ForeignKey("hedge_fund_flow_runs.id"), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    persona_logic: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="PENDING")
+    approval_token: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    flow_run_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("hedge_fund_flow_runs.id"), nullable=True)

@@ -4,6 +4,7 @@ import re
 
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
+from typing import Any
 
 from agents.portfolio_manager import portfolio_management_agent
 from agents.risk_manager import risk_management_agent
@@ -34,7 +35,7 @@ def extract_base_agent_key(unique_id: str) -> str:
 
 
 # Helper function to create the agent graph
-def create_graph(graph_nodes: list, graph_edges: list) -> StateGraph:
+def create_graph(graph_nodes: list, graph_edges: list) -> Any:
     """Create the workflow based on the React Flow graph structure."""
     graph = StateGraph(AgentState)
     graph.add_node("start_node", start)
@@ -138,7 +139,7 @@ async def run_graph_async(graph, portfolio, tickers, start_date, end_date, model
 
 
 def run_graph(
-    graph: StateGraph,
+    graph: Any,
     portfolio: dict,
     tickers: list[str],
     start_date: str,

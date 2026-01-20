@@ -13,9 +13,12 @@ class MichaelBurryAlphaModel(PersonaAlphaModel):
     def __init__(self):
         super().__init__("michael_burry")
 
-    def update(self, state: AgentState, ticker: str) -> list[Insight]:
+    def update(self, state: AgentState, data: str) -> list[Insight]:
+        ticker = data
         quant_scorecard = state["data"].get("quant_scorecard", {})
         config = ANALYST_CONFIG_RULES.get(self.agent_id)
+        if not config:
+            return []
         factor_rules = config["factor_rules"]
 
         progress.update_status(self.agent_id, ticker, "Contrarian Audit")

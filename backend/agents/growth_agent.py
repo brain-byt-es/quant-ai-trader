@@ -1,15 +1,15 @@
 from agents.base_agent import PersonaAlphaModel
 from lean_bridge.contracts import Insight
-from graph.state import AgentState, show_agent_reasoning
+from graph.state import AgentState
 from utils.progress import progress
-import json
 from langchain_core.messages import HumanMessage
 
 class GrowthAlphaModel(PersonaAlphaModel):
     def __init__(self):
         super().__init__("growth_analyst")
 
-    def update(self, state: AgentState, ticker: str) -> list[Insight]:
+    def update(self, state: AgentState, data: str) -> list[Insight]:
+        ticker = data
         progress.update_status(self.agent_id, ticker, "Analyzing Growth Potential")
         # In this refactor, we simplify to numeric insights
         # Logic would normally calculate EPS growth, Revenue growth, etc.
@@ -24,7 +24,8 @@ def growth_analyst_agent(state: AgentState, agent_id: str = "growth_analyst"):
     for ticker in state["data"]["tickers"]:
         insights.extend(model.update(state, ticker))
     
-    if "insights" not in state["data"]: state["data"]["insights"] = []
+    if "insights" not in state["data"]:
+        state["data"]["insights"] = []
     state["data"]["insights"].extend([i.model_dump() for i in insights])
     
     return {"messages": [HumanMessage(content="Growth analysis complete", name="growth_analyst")], "data": state["data"]}

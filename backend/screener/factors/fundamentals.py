@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 def compute_earnings_yield(snapshot_df: pd.DataFrame) -> pd.Series:
     """Earnings yield proxy (placeholder)."""

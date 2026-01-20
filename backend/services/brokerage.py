@@ -1,14 +1,12 @@
-import json
 import os
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from database.models import ProposedTrade
 from services.trading.alpaca import AlpacaLiveProvider, AlpacaPaperProvider
-from services.trading.base import OrderSide, OrderStatus, OrderType
+from services.trading.base import OrderSide, OrderType
 
 
 class BrokerageService:

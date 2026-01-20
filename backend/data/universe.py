@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from screener.engine import run_screener, RankingResult

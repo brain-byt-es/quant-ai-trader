@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -67,8 +67,8 @@ class BaseHedgeFundRequest(BaseModel):
     graph_nodes: List[GraphNode]
     graph_edges: List[GraphEdge]
     agent_models: Optional[List[AgentModelConfig]] = None
-    model_name: Optional[str] = "gpt-4.1"
-    model_provider: Optional[ModelProvider] = ModelProvider.OPENAI
+    model_name: str = "gpt-4.1"
+    model_provider: ModelProvider = ModelProvider.OPENAI
     margin_requirement: float = 0.0
     portfolio_positions: Optional[List[PortfolioPosition]] = None
     api_keys: Optional[Dict[str, str]] = None
@@ -130,7 +130,7 @@ class BacktestResponse(BaseModel):
 
 
 class HedgeFundRequest(BaseHedgeFundRequest):
-    end_date: Optional[str] = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
+    end_date: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
     start_date: Optional[str] = None
     initial_cash: float = 100000.0
 

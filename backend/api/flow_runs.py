@@ -1,3 +1,6 @@
+import asyncio
+import json
+from datetime import datetime, UTC
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -146,7 +149,12 @@ async def get_flow_run(flow_id: int, run_id: int, db: Session = Depends(get_db))
         # Get flow run
         run_repo = FlowRunRepository(db)
         flow_run = run_repo.get_flow_run_by_id(run_id)
-        if not flow_run or flow_run.flow_id != flow_id:
+        
+        # Split conditions to satisfy Pylance
+        if not flow_run:
+            raise HTTPException(status_code=404, detail="Flow run not found")
+        
+        if getattr(flow_run, "flow_id", None) != flow_id:
             raise HTTPException(status_code=404, detail="Flow run not found")
 
         return FlowRunResponse.from_orm(flow_run)
@@ -177,7 +185,11 @@ async def update_flow_run(flow_id: int, run_id: int, request: FlowRunUpdateReque
         run_repo = FlowRunRepository(db)
         # First verify the run exists and belongs to this flow
         existing_run = run_repo.get_flow_run_by_id(run_id)
-        if not existing_run or existing_run.flow_id != flow_id:
+        
+        if not existing_run:
+            raise HTTPException(status_code=404, detail="Flow run not found")
+            
+        if getattr(existing_run, "flow_id", None) != flow_id:
             raise HTTPException(status_code=404, detail="Flow run not found")
 
         flow_run = run_repo.update_flow_run(run_id=run_id, status=request.status, results=request.results, error_message=request.error_message)
@@ -212,7 +224,11 @@ async def delete_flow_run(flow_id: int, run_id: int, db: Session = Depends(get_d
         # Verify run exists and belongs to this flow
         run_repo = FlowRunRepository(db)
         existing_run = run_repo.get_flow_run_by_id(run_id)
-        if not existing_run or existing_run.flow_id != flow_id:
+        
+        if not existing_run:
+            raise HTTPException(status_code=404, detail="Flow run not found")
+            
+        if getattr(existing_run, "flow_id", None) != flow_id:
             raise HTTPException(status_code=404, detail="Flow run not found")
 
         success = run_repo.delete_flow_run(run_id)

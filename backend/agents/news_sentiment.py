@@ -1,17 +1,15 @@
 from agents.base_agent import PersonaAlphaModel
 from lean_bridge.contracts import Insight
-from agents.types import AgentDebate
 from graph.state import AgentState
 from utils.progress import progress
-import json
 from langchain_core.messages import HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
 
 class NewsAlphaModel(PersonaAlphaModel):
     def __init__(self):
         super().__init__("news_sentiment_analyst")
 
-    def update(self, state: AgentState, ticker: str) -> list[Insight]:
+    def update(self, state: AgentState, data: str) -> list[Insight]:
+        ticker = data
         progress.update_status(self.agent_id, ticker, "Parsing News Feed")
         # Logic would analyze headlines, sentiment scores, etc.
         
@@ -20,8 +18,10 @@ class NewsAlphaModel(PersonaAlphaModel):
         insight = self.generate_insight(ticker, "neutral", 50.0) 
         
         # Store for backward compatibility
-        if "analyst_signals" not in state["data"]: state["data"]["analyst_signals"] = {}
-        if self.agent_id not in state["data"]["analyst_signals"]: state["data"]["analyst_signals"][self.agent_id] = {}
+        if "analyst_signals" not in state["data"]:
+            state["data"]["analyst_signals"] = {}
+        if self.agent_id not in state["data"]["analyst_signals"]:
+            state["data"]["analyst_signals"][self.agent_id] = {}
         state["data"]["analyst_signals"][self.agent_id][ticker] = {
             "signal": "neutral",
             "confidence": 0.5,
@@ -36,7 +36,8 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_anal
     for ticker in state["data"]["tickers"]:
         insights.extend(model.update(state, ticker))
     
-    if "insights" not in state["data"]: state["data"]["insights"] = []
+    if "insights" not in state["data"]:
+        state["data"]["insights"] = []
     state["data"]["insights"].extend([i.model_dump() for i in insights])
     
     return {"messages": [HumanMessage(content="News analysis complete", name="news_sentiment_analyst")], "data": state["data"]}

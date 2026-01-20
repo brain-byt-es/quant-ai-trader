@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import datetime, UTC
+from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ class FlowRunRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_flow_run(self, flow_id: int, request_data: Dict[str, Any] = None) -> HedgeFundFlowRun:
+    def create_flow_run(self, flow_id: int, request_data: Optional[Dict[str, Any]] = None) -> HedgeFundFlowRun:
         """Create a new flow run"""
         # Get the next run number for this flow
         run_number = self._get_next_run_number(flow_id)
@@ -35,7 +35,10 @@ class FlowRunRepository:
 
     def get_active_flow_run(self, flow_id: int) -> Optional[HedgeFundFlowRun]:
         """Get the current active (IN_PROGRESS) run for a flow"""
-        return self.db.query(HedgeFundFlowRun).filter(HedgeFundFlowRun.flow_id == flow_id, HedgeFundFlowRun.status == FlowRunStatus.IN_PROGRESS.value).first()
+        return self.db.query(HedgeFundFlowRun).filter(
+            HedgeFundFlowRun.flow_id == flow_id, 
+            HedgeFundFlowRun.status == FlowRunStatus.IN_PROGRESS.value
+        ).first()
 
     def get_latest_flow_run(self, flow_id: int) -> Optional[HedgeFundFlowRun]:
         """Get the most recent run for a flow"""
@@ -49,13 +52,17 @@ class FlowRunRepository:
 
         # Update status and timing
         if status is not None:
-            flow_run.status = status.value
+            flow_run.status = str(status.value)
 
             # Update timing based on status
-            if status == FlowRunStatus.IN_PROGRESS and not flow_run.started_at:
-                flow_run.started_at = datetime.utcnow()
-            elif status in [FlowRunStatus.COMPLETE, FlowRunStatus.ERROR] and not flow_run.completed_at:
-                flow_run.completed_at = datetime.utcnow()
+            if status == FlowRunStatus.IN_PROGRESS:
+                started_at = getattr(flow_run, "started_at", None)
+                if started_at is None:
+                    flow_run.started_at = datetime.now(UTC)
+            elif status in [FlowRunStatus.COMPLETE, FlowRunStatus.ERROR]:
+                completed_at = getattr(flow_run, "completed_at", None)
+                if completed_at is None:
+                    flow_run.completed_at = datetime.now(UTC)
 
         # Update results and error message
         if results is not None:
@@ -81,13 +88,13 @@ class FlowRunRepository:
         """Delete all runs for a specific flow. Returns count of deleted runs."""
         deleted_count = self.db.query(HedgeFundFlowRun).filter(HedgeFundFlowRun.flow_id == flow_id).delete()
         self.db.commit()
-        return deleted_count
+        return int(deleted_count)
 
     def get_flow_run_count(self, flow_id: int) -> int:
         """Get total count of runs for a flow"""
-        return self.db.query(HedgeFundFlowRun).filter(HedgeFundFlowRun.flow_id == flow_id).count()
+        return int(self.db.query(HedgeFundFlowRun).filter(HedgeFundFlowRun.flow_id == flow_id).count())
 
     def _get_next_run_number(self, flow_id: int) -> int:
         """Get the next run number for a flow"""
         max_run_number = self.db.query(func.max(HedgeFundFlowRun.run_number)).filter(HedgeFundFlowRun.flow_id == flow_id).scalar()
-        return (max_run_number or 0) + 1
+        return int(max_run_number or 0) + 1

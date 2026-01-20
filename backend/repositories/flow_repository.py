@@ -1,5 +1,6 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from database.models import HedgeFundFlow
@@ -11,9 +12,28 @@ class FlowRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_flow(self, name: str, nodes: dict, edges: dict, description: str = None, viewport: dict = None, data: dict = None, is_template: bool = False, tags: List[str] = None) -> HedgeFundFlow:
+    def create_flow(
+        self, 
+        name: str, 
+        nodes: List[Dict[str, Any]], 
+        edges: List[Dict[str, Any]], 
+        description: Optional[str] = None, 
+        viewport: Optional[Dict[str, Any]] = None, 
+        data: Optional[Dict[str, Any]] = None, 
+        is_template: bool = False, 
+        tags: Optional[List[str]] = None
+    ) -> HedgeFundFlow:
         """Create a new hedge fund flow"""
-        flow = HedgeFundFlow(name=name, description=description, nodes=nodes, edges=edges, viewport=viewport, data=data, is_template=is_template, tags=tags or [])
+        flow = HedgeFundFlow(
+            name=name, 
+            description=description, 
+            nodes=nodes, 
+            edges=edges, 
+            viewport=viewport, 
+            data=data, 
+            is_template=is_template, 
+            tags=tags or []
+        )
         self.db.add(flow)
         self.db.commit()
         self.db.refresh(flow)
@@ -27,14 +47,25 @@ class FlowRepository:
         """Get all flows, optionally excluding templates"""
         query = self.db.query(HedgeFundFlow)
         if not include_templates:
-            query = query.filter(HedgeFundFlow.is_template == False)
-        return query.order_by(HedgeFundFlow.updated_at.desc()).all()
+            query = query.filter(HedgeFundFlow.is_template.is_(False))
+        return query.order_by(desc(HedgeFundFlow.updated_at)).all()
 
     def get_flows_by_name(self, name: str) -> List[HedgeFundFlow]:
         """Search flows by name (case-insensitive partial match)"""
-        return self.db.query(HedgeFundFlow).filter(HedgeFundFlow.name.ilike(f"%{name}%")).order_by(HedgeFundFlow.updated_at.desc()).all()
+        return self.db.query(HedgeFundFlow).filter(HedgeFundFlow.name.ilike(f"%{name}%")).order_by(desc(HedgeFundFlow.updated_at)).all()
 
-    def update_flow(self, flow_id: int, name: str = None, description: str = None, nodes: dict = None, edges: dict = None, viewport: dict = None, data: dict = None, is_template: bool = None, tags: List[str] = None) -> Optional[HedgeFundFlow]:
+    def update_flow(
+        self, 
+        flow_id: int, 
+        name: Optional[str] = None, 
+        description: Optional[str] = None, 
+        nodes: Optional[List[Dict[str, Any]]] = None, 
+        edges: Optional[List[Dict[str, Any]]] = None, 
+        viewport: Optional[Dict[str, Any]] = None, 
+        data: Optional[Dict[str, Any]] = None, 
+        is_template: Optional[bool] = None, 
+        tags: Optional[List[str]] = None
+    ) -> Optional[HedgeFundFlow]:
         """Update an existing flow"""
         flow = self.get_flow_by_id(flow_id)
         if not flow:
@@ -71,7 +102,7 @@ class FlowRepository:
         self.db.commit()
         return True
 
-    def duplicate_flow(self, flow_id: int, new_name: str = None) -> Optional[HedgeFundFlow]:
+    def duplicate_flow(self, flow_id: int, new_name: Optional[str] = None) -> Optional[HedgeFundFlow]:
         """Create a copy of an existing flow"""
         original = self.get_flow_by_id(flow_id)
         if not original:
@@ -79,4 +110,13 @@ class FlowRepository:
 
         copy_name = new_name or f"{original.name} (Copy)"
 
-        return self.create_flow(name=copy_name, description=original.description, nodes=original.nodes, edges=original.edges, viewport=original.viewport, data=original.data, is_template=False, tags=original.tags)  # Copies are not templates by default
+        return self.create_flow(
+            name=copy_name, 
+            description=str(original.description), 
+            nodes=list(original.nodes), 
+            edges=list(original.edges), 
+            viewport=dict(original.viewport) if original.viewport else None, 
+            data=dict(original.data) if original.data else None, 
+            is_template=False, 
+            tags=list(original.tags) if original.tags else None
+        )

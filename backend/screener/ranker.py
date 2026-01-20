@@ -1,6 +1,5 @@
 import pandas as pd
-import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Any, cast
 from pydantic import BaseModel
 
 class RankingResult(BaseModel):
@@ -13,14 +12,14 @@ class RankingResult(BaseModel):
 def winsorize(s: pd.Series, lower: float = 0.01, upper: float = 0.99) -> pd.Series:
     """Winsorize extreme values."""
     quantiles = s.quantile([lower, upper])
-    return s.clip(lower=quantiles.iloc[0], upper=quantiles.iloc[1])
+    return s.clip(lower=float(quantiles.iloc[0]), upper=float(quantiles.iloc[1]))
 
 def zscore(s: pd.Series) -> pd.Series:
     """Compute z-score."""
-    std = s.std()
+    std = float(s.std())
     if std == 0:
         return pd.Series(0.0, index=s.index)
-    return (s - s.mean()) / std
+    return (s - float(s.mean())) / std
 
 def rank_cross_section(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -73,16 +72,28 @@ def get_ranking_result(
     df_ranked["composite_score"] = composite_scores
     
     # 3. Select Top K
-    top_k = composite_scores.sort_values(ascending=False).head(k).index.tolist()
+    # top_k should be List[str]
+    top_k = [str(s) for s in composite_scores.sort_values(ascending=False).head(k).index.tolist()]
     
     # 4. Prepare scores table for Top K
+    # Explicitly convert to Dict[str, Dict[str, float]] to satisfy Pylance
     top_k_df = df_ranked.loc[top_k]
-    scores_table = top_k_df.to_dict(orient="index")
+    
+    # We must be very explicit to satisfy the linter's invariant dict requirement
+    final_scores_table: Dict[str, Dict[str, float]] = {}
+    
+    # Iterate through the DataFrame rows to build the nested dictionary manually
+    for symbol_idx, row in top_k_df.iterrows():
+        symbol_str = str(symbol_idx)
+        factor_scores: Dict[str, float] = {}
+        for factor_name, score_val in row.items():
+            factor_scores[str(factor_name)] = float(score_val)
+        final_scores_table[symbol_str] = factor_scores
     
     return RankingResult(
         base_count=base_count,
         eligible_count=len(eligible_symbols),
         ranked_count=len(factor_df),
         top_k_symbols=top_k,
-        scores_table=scores_table
+        scores_table=final_scores_table
     )

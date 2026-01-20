@@ -1,8 +1,12 @@
-from typing import Any, Dict, List
+import json
+from datetime import datetime, UTC
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
 
+from data.universe import UniverseSelectionModel
+from lean_bridge.context import AlgorithmContext
 from tools.api import (
     get_financial_metrics,
     get_market_cap,
@@ -17,12 +21,13 @@ def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
     rs = gain / loss
-    return 100 - (100 / (1 + rs.iloc[-1]))
+    if rs.empty or rs.iloc[-1] == -1:
+        return 50.0
+    return float(100 - (100 / (1 + rs.iloc[-1])))
 
 
 def calculate_beta(stock_returns: pd.Series, market_returns: pd.Series) -> float:
     # Simplified Beta calculation assuming aligned dates
-    # In production, ensure dates are strictly aligned
     if len(stock_returns) < 30:
         return 1.0
 
@@ -36,19 +41,19 @@ def calculate_beta(stock_returns: pd.Series, market_returns: pd.Series) -> float
 
     covariance = np.cov(s, m)[0][1]
     variance = np.var(m)
-    return covariance / variance if variance != 0 else 1.0
+    return float(covariance / variance) if variance != 0 else 1.0
 
 
 def calculate_max_drawdown(prices: pd.Series) -> float:
     rolling_max = prices.cummax()
     drawdown = (prices - rolling_max) / rolling_max
-    return drawdown.min()
+    return float(drawdown.min())
 
 
 def calculate_var(returns: pd.Series, confidence_level: float = 0.05) -> float:
     if len(returns) == 0:
         return 0.0
-    return np.percentile(returns, confidence_level * 100)
+    return float(np.percentile(returns, confidence_level * 100))
 
 
 class QuantEngine:
@@ -70,16 +75,17 @@ class QuantEngine:
             progress.update_status("quant_engine", ticker, "Calculating Factors")
             metrics = self._calculate_ticker_metrics(ticker)
             if metrics:
-                metrics["ticker"] = ticker
-                raw_data.append(metrics)
+                # Cast to Any to allow inserting 'ticker' string
+                metrics_data: Dict[str, Any] = cast(Dict[str, Any], metrics)
+                metrics_data["ticker"] = ticker
+                raw_data.append(metrics_data)
 
         if not raw_data:
             return {}
 
         df = pd.DataFrame(raw_data)
 
-        # 2. Z-Score Normalization (Sector-neutral if possible, otherwise Universe-relative)
-        # Using Universe-relative for this implementation
+        # 2. Z-Score Normalization
         numeric_cols = df.select_dtypes(include=[np.number]).columns
 
         # Calculate Z-Scores
@@ -93,13 +99,22 @@ class QuantEngine:
         # 3. Structure Output
         final_scorecard = {}
         for _, row in z_score_df.iterrows():
-            ticker = row["ticker"]
-            final_scorecard[ticker] = {"metrics": {k: float(v) if pd.notnull(v) else None for k, v in df[df["ticker"] == ticker].iloc[0].items() if k != "ticker"}, "z_scores": {k: float(v) if pd.notnull(v) else 0.0 for k, v in row.items() if k.endswith("_z")}}
+            ticker_val = row["ticker"]
+            ticker = str(ticker_val)
+            
+            # Cast keys to string to avoid Hashable.endswith error
+            metrics_dict = {str(k): float(v) if pd.notnull(v) else None for k, v in df[df["ticker"] == ticker].iloc[0].items() if str(k) != "ticker"}
+            z_scores_dict = {str(k): float(v) if pd.notnull(v) else 0.0 for k, v in row.items() if str(k).endswith("_z")}
+            
+            final_scorecard[ticker] = {
+                "metrics": metrics_dict,
+                "z_scores": z_scores_dict
+            }
 
         progress.update_status("quant_engine", None, "Done")
         return final_scorecard
 
-    def _calculate_ticker_metrics(self, ticker: str) -> Dict[str, float]:
+    def _calculate_ticker_metrics(self, ticker: str) -> Optional[Dict[str, float]]:
         try:
             # Fetch Data
             progress.update_status("quant_engine", ticker, "Fetching prices")
@@ -125,24 +140,22 @@ class QuantEngine:
             prices = prices_df["close"]
             returns = prices.pct_change().dropna()
 
-            # 12m-1m Momentum (approx 252 trading days)
+            # 12m-1m Momentum
             mom_12m_1m = 0.0
             if len(prices) > 252:
                 price_1m_ago = prices.iloc[-21]
                 price_12m_ago = prices.iloc[-252]
-                mom_12m_1m = (price_1m_ago / price_12m_ago) - 1
+                mom_12m_1m = float((price_1m_ago / price_12m_ago) - 1)
 
             # RSI(14)
             rsi = calculate_rsi(prices) if len(prices) > 14 else 50.0
 
             # Distance from 200d MA
             ma_200 = prices.rolling(window=200).mean().iloc[-1] if len(prices) >= 200 else prices.mean()
-            dist_200ma = (prices.iloc[-1] / ma_200) - 1
+            dist_200ma = float((prices.iloc[-1] / ma_200) - 1)
 
             # --- Risk Cluster ---
-            # Beta (Simplified vs 'Market' - effectively correlating with itself if single ticker,
-            # ideally fetch SPY. For now, use volatility as proxy or placeholder)
-            beta = 1.0  # Placeholder without SPY data
+            beta = 1.0
             max_dd = calculate_max_drawdown(prices)
             var_95 = calculate_var(returns)
 
@@ -157,69 +170,63 @@ class QuantEngine:
             roic = latest_fin.return_on_invested_capital or 0.0
             debt_equity = latest_fin.debt_to_equity or 0.0
 
-            # Altman Z-Score (Simplified 1.2A + 1.4B + 3.3C + 0.6D + 1.0E)
-            # A = Working Capital / Total Assets
-            # B = Retained Earnings / Total Assets
-            # C = EBIT / Total Assets
-            # D = Market Value of Equity / Total Liabilities
-            # E = Sales / Total Assets
+            # Altman Z-Score
             altman_z = 0.0
-            if latest_line and latest_line.total_assets:
-                ta = latest_line.total_assets
-                wc = latest_line.total_current_assets - latest_line.total_current_liabilities
-                re = latest_line.retained_earnings or 0
-                ebit = latest_line.ebit or 0
-                tl = latest_line.total_liabilities or 1
-                rev = latest_line.revenue or 0
-                mve = market_cap or 0
+            if latest_line:
+                # Use getattr for dynamic fields
+                ta = float(getattr(latest_line, "total_assets", 0) or 0)
+                if ta > 0:
+                    tca = float(getattr(latest_line, "total_current_assets", 0) or 0)
+                    tcl = float(getattr(latest_line, "total_current_liabilities", 0) or 0)
+                    wc = tca - tcl
+                    re = float(getattr(latest_line, "retained_earnings", 0) or 0)
+                    ebit = float(getattr(latest_line, "ebit", 0) or 0)
+                    tl = float(getattr(latest_line, "total_liabilities", 1) or 1)
+                    rev = float(getattr(latest_line, "revenue", 0) or 0)
+                    mve = float(market_cap or 0)
 
-                a = wc / ta
-                b = re / ta
-                c = ebit / ta
-                d_ratio = mve / tl
-                e = rev / ta
+                    a = wc / ta
+                    b = re / ta
+                    c = ebit / ta
+                    d_ratio = mve / tl
+                    e = rev / ta
 
-                altman_z = 1.2 * a + 1.4 * b + 3.3 * c + 0.6 * d_ratio + 1.0 * e
+                    altman_z = 1.2 * a + 1.4 * b + 3.3 * c + 0.6 * d_ratio + 1.0 * e
 
             # --- Growth Cluster ---
-            rev_growth = latest_fin.revenue_growth or 0.0  # 1y growth approx
+            rev_growth = latest_fin.revenue_growth or 0.0
             eps_growth = latest_fin.earnings_growth or 0.0
             rnd_sales = 0.0
-            if latest_line and latest_line.revenue and latest_line.research_and_development:
-                rnd_sales = latest_line.research_and_development / latest_line.revenue
+            if latest_line:
+                rev = float(getattr(latest_line, "revenue", 0) or 0)
+                rnd = float(getattr(latest_line, "research_and_development", 0) or 0)
+                if rev > 0:
+                    rnd_sales = rnd / rev
 
             return {
-                # Momentum
                 "momentum_12m_1m": mom_12m_1m,
                 "rsi": rsi,
                 "dist_200ma": dist_200ma,
-                # Risk
                 "beta": beta,
                 "max_drawdown": max_dd,
                 "var_95": var_95,
-                # Value
-                "pe_ratio": pe,
-                "pb_ratio": pb,
-                "ev_ebitda": ev_ebitda,
-                "fcf_yield": fcf_yield,
-                # Quality
-                "roe": roe,
-                "roic": roic,
-                "debt_to_equity": debt_equity,
-                "altman_z": altman_z,
-                # Growth
-                "revenue_growth": rev_growth,
-                "eps_growth": eps_growth,
-                "rnd_to_sales": rnd_sales,
+                "pe_ratio": float(pe),
+                "pb_ratio": float(pb),
+                "ev_ebitda": float(ev_ebitda),
+                "fcf_yield": float(fcf_yield),
+                "roe": float(roe),
+                "roic": float(roic),
+                "debt_to_equity": float(debt_equity),
+                "altman_z": float(altman_z),
+                "revenue_growth": float(rev_growth),
+                "eps_growth": float(eps_growth),
+                "rnd_to_sales": float(rnd_sales),
             }
 
         except Exception as e:
             print(f"Error calculating metrics for {ticker}: {e}")
             return None
 
-
-from data.universe import UniverseSelectionModel
-from datetime import datetime
 
 def quant_engine_node(state: Dict[str, Any]):
     """LangGraph node for the Quant Engine. Handles dynamic Universe Selection."""
@@ -230,16 +237,22 @@ def quant_engine_node(state: Dict[str, Any]):
     
     # 1. Universe Selection
     usm = UniverseSelectionModel()
-    active_symbols = usm.select_symbols(datetime.utcnow(), data)
+    active_symbols = usm.select_symbols(datetime.now(UTC), data)
     data["tickers"] = active_symbols # Update state with active dynamic universe
     
     # Handle Security Changes (LEAN-faithful cleanup)
     removed_tickers = list(previous_tickers - set(active_symbols))
     if removed_tickers:
         from core.portfolio_manager import MeanVarianceOptimizationPortfolioConstructionModel
-        # In a real run, we'd use the persistent PCM instance from the session/context
+        # Use a real context to satisfy Pylance
+        context = AlgorithmContext(
+            time=datetime.now(UTC),
+            universe=active_symbols,
+            portfolio_state={},
+            config={}
+        )
         pcm = MeanVarianceOptimizationPortfolioConstructionModel()
-        pcm.on_securities_changed(None, {"removed": removed_tickers})
+        pcm.on_securities_changed(context, {"removed": removed_tickers})
 
     # Emit progress for universe selection if screening occurred
     if "universe_selection_result" in data:

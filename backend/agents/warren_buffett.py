@@ -1,7 +1,7 @@
 from agents.base_agent import PersonaAlphaModel
 from lean_bridge.contracts import Insight
 from agents.types import AgentDebate
-from graph.state import AgentState, show_agent_reasoning
+from graph.state import AgentState
 from utils.analyst_rules import ANALYST_CONFIG_RULES
 from utils.llm import call_llm
 from utils.progress import progress
@@ -13,9 +13,12 @@ class WarrenBuffettAlphaModel(PersonaAlphaModel):
     def __init__(self):
         super().__init__("warren_buffett")
 
-    def update(self, state: AgentState, ticker: str) -> list[Insight]:
+    def update(self, state: AgentState, data: str) -> list[Insight]:
+        ticker = data
         quant_scorecard = state["data"].get("quant_scorecard", {})
         config = ANALYST_CONFIG_RULES.get(self.agent_id)
+        if not config:
+            return []
         factor_rules = config["factor_rules"]
 
         progress.update_status(self.agent_id, ticker, "Analyzing Scorecard")

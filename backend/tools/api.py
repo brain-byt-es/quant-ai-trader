@@ -1,6 +1,5 @@
 import os
-import time
-from typing import Any, Dict, List, Optional
+from typing import List
 
 import pandas as pd
 
@@ -33,7 +32,7 @@ class MarketDataClient:
     def get_price_data(self, ticker: str, start_date: str, end_date: str) -> List[Price]:
         # Cache check (simple)
         cache_key = f"prices_{ticker}_{start_date}_{end_date}"
-        cached = self.cache.get_prices(cache_key)  # Underlying cache might expect just ticker, but I'll use specific key if supported or simple ticker key
+        self.cache.get_prices(cache_key)  # Underlying cache might expect just ticker, but I'll use specific key if supported or simple ticker key
         # The existing cache implementation uses `_prices_cache[ticker]` and merges.
         # So I should just call get_prices(ticker).
         # But wait, `get_cache().get_prices(ticker)` returns ALL cached prices for ticker.

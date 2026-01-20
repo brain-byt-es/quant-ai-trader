@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Optional, List, Dict, TYPE_CHECKING
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime, timedelta
 import math
@@ -85,12 +85,16 @@ class AlphaModel(ABC):
         pass
 
     @abstractmethod
-    def update(self, context: AlgorithmContext, data: dict) -> List[Insight]:
+    def update(self, state: Any, data: Any) -> List[Insight]:
         pass
 
 class PortfolioConstructionModel(ABC):
     @abstractmethod
     def create_targets(self, insights: List[Insight], context: AlgorithmContext) -> List[PortfolioTarget]:
+        pass
+
+    @abstractmethod
+    def on_securities_changed(self, context: AlgorithmContext, changes: dict):
         pass
 
 class RiskManagementModel(ABC):

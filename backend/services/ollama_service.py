@@ -3,15 +3,11 @@ import json
 import logging
 import os
 import platform
-import queue
-import re
 import signal
 import subprocess
-import sys
-import threading
 import time
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import AsyncGenerator, Dict, List, Optional, Any, cast
 
 import ollama
 
@@ -22,8 +18,8 @@ class OllamaService:
     """Service for managing Ollama integration in the backend."""
 
     def __init__(self):
-        self._download_progress = {}
-        self._download_processes = {}
+        self._download_progress: Dict[str, Dict[str, Any]] = {}
+        self._download_processes: Dict[str, Any] = {}
 
         # Initialize async client
         self._async_client = ollama.AsyncClient()
@@ -33,7 +29,7 @@ class OllamaService:
     # PUBLIC API METHODS
     # =============================================================================
 
-    async def check_ollama_status(self) -> Dict[str, any]:
+    async def check_ollama_status(self) -> Dict[str, Any]:
         """Check Ollama installation and server status."""
         try:
             is_installed = await self._check_installation()
@@ -49,7 +45,7 @@ class OllamaService:
             logger.error(f"Error checking Ollama status: {e}")
             return self._create_error_status(str(e))
 
-    async def start_server(self) -> Dict[str, any]:
+    async def start_server(self) -> Dict[str, Any]:
         """Start the Ollama server."""
         try:
             success = await self._execute_server_start()
@@ -61,7 +57,7 @@ class OllamaService:
             logger.error(f"Error starting Ollama server: {e}")
             return {"success": False, "message": f"Error starting server: {str(e)}"}
 
-    async def stop_server(self) -> Dict[str, any]:
+    async def stop_server(self) -> Dict[str, Any]:
         """Stop the Ollama server."""
         try:
             success = await self._execute_server_stop()
@@ -73,7 +69,7 @@ class OllamaService:
             logger.error(f"Error stopping Ollama server: {e}")
             return {"success": False, "message": f"Error stopping server: {str(e)}"}
 
-    async def download_model(self, model_name: str) -> Dict[str, any]:
+    async def download_model(self, model_name: str) -> Dict[str, Any]:
         """Download an Ollama model."""
         try:
             success = await self._execute_model_download(model_name)
@@ -90,7 +86,7 @@ class OllamaService:
         async for progress_data in self._stream_model_download(model_name):
             yield progress_data
 
-    async def delete_model(self, model_name: str) -> Dict[str, any]:
+    async def delete_model(self, model_name: str) -> Dict[str, Any]:
         """Delete an Ollama model."""
         try:
             success = await self._execute_model_deletion(model_name)
@@ -144,11 +140,11 @@ class OllamaService:
             logger.error(f"Error getting available models for API: {e}")
             return []  # Return empty list on error to not break the API
 
-    def get_download_progress(self, model_name: str) -> Optional[Dict[str, any]]:
+    def get_download_progress(self, model_name: str) -> Optional[Dict[str, Any]]:
         """Get current download progress for a model."""
         return self._download_progress.get(model_name)
 
-    def get_all_download_progress(self) -> Dict[str, Dict[str, any]]:
+    def get_all_download_progress(self) -> Dict[str, Dict[str, Any]]:
         """Get current download progress for all models."""
         return self._download_progress.copy()
 
@@ -166,7 +162,7 @@ class OllamaService:
     # PRIVATE HELPER METHODS
     # =============================================================================
 
-    def _create_error_status(self, error: str) -> Dict[str, any]:
+    def _create_error_status(self, error: str) -> Dict[str, Any]:
         """Create error status response."""
         return {"installed": False, "running": False, "server_running": False, "available_models": [], "server_url": "", "error": error}
 
@@ -204,8 +200,9 @@ class OllamaService:
 
         try:
             response = await self._async_client.list()
-            models = [model.model for model in response.models]
-            server_url = getattr(self._async_client, "host", "http://localhost:11434")
+            # Explicitly cast model to str to satisfy return type tuple[List[str], str]
+            models = [str(model.model) for model in response.models]
+            server_url = str(getattr(self._async_client, "host", "http://localhost:11434"))
             logger.debug(f"Found {len(models)} locally available models")
             return models, server_url
         except Exception as e:
@@ -409,7 +406,7 @@ class OllamaService:
             if model_name in self._download_progress:
                 del self._download_progress[model_name]
 
-    def _process_download_progress(self, progress, model_name: str) -> Optional[Dict[str, any]]:
+    def _process_download_progress(self, progress, model_name: str) -> Optional[Dict[str, Any]]:
         """Process download progress from ollama client."""
         if not hasattr(progress, "status"):
             return None

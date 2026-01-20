@@ -1,11 +1,9 @@
-import json
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
-from agents.types import AgentDebate
-from graph.state import AgentState, show_agent_reasoning
+from graph.state import AgentState
 from utils.llm import call_llm
 
 

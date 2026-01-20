@@ -1,4 +1,8 @@
 import asyncio
+import json
+from datetime import datetime, UTC
+from enum import Enum
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -23,117 +27,63 @@ from utils.progress import progress
 router = APIRouter(prefix="/hedge-fund")
 
 
-from lean_bridge.context import AlgorithmContext
-
-
 from core.portfolio_manager import MeanVarianceOptimizationPortfolioConstructionModel
-
-
 from core.execution_planner import ExecutionPlanner
-
-
 from graph.risk_management import InstitutionalRiskModel
 
 
-from datetime import datetime, timezone
-
-
-
+def get_model_provider_value(provider: Any) -> str:
+    """Safely extract the string value from a model provider (Enum, Literal, or str)."""
+    if provider is None:
+        return "OpenAI"
+    if isinstance(provider, Enum):
+        return str(provider.value)
+    if hasattr(provider, "value"):
+        return str(provider.value)
+    return str(provider)
 
 
 @router.post(
 
-
     path="/run",
-
 
     responses={
 
-
         200: {"description": "Successful response with streaming updates"},
-
 
         400: {"model": ErrorResponse, "description": "Invalid request parameters"},
 
-
         500: {"model": ErrorResponse, "description": "Internal server error"},
-
 
     },
 
-
 )
-
-
 async def run(request_data: HedgeFundRequest, request: Request, db: Session = Depends(get_db)):
-
-
     try:
-
-
         # 1. Hydrate Context & Universe
-
-
         if not request_data.api_keys:
-
-
             api_key_service = ApiKeyService(db)
-
-
             request_data.api_keys = api_key_service.get_api_keys_dict()
 
-
-
-
-
         portfolio = create_portfolio(request_data.initial_cash, request_data.margin_requirement, request_data.tickers, request_data.portfolio_positions)
-
-
         
-
-
         # Instantiate professional LEAN-faithful models
-
-
-        pcm = MeanVarianceOptimizationPortfolioConstructionModel()
-
-
-        risk_model = InstitutionalRiskModel()
-
-
-        execution_planner = ExecutionPlanner()
-
-
-
-
+        MeanVarianceOptimizationPortfolioConstructionModel()
+        InstitutionalRiskModel()
+        ExecutionPlanner()
 
         # Construct agent graph
-
-
         graph = create_graph(
-
-
             graph_nodes=request_data.graph_nodes,
-
-
             graph_edges=request_data.graph_edges
-
-
         )
-
-
         graph = graph.compile()
-
-
-
 
         # Log a test progress update for debugging
         progress.update_status("system", None, "Preparing hedge fund run")
 
-        # Convert model_provider to string if it's an enum
-        model_provider = request_data.model_provider
-        if hasattr(model_provider, "value"):
-            model_provider = model_provider.value
+        # Safely convert model_provider to string
+        model_provider = get_model_provider_value(request_data.model_provider)
 
         # Function to detect client disconnection
         async def wait_for_disconnect():
@@ -171,7 +121,7 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                         tickers=request_data.tickers,
                         start_date=request_data.start_date,
                         end_date=request_data.end_date,
-                        model_name=request_data.model_name,
+                        model_name=request_data.model_name or "gpt-4.1",
                         model_provider=model_provider,
                         request=request_data,  # Pass the full request for agent-specific model access
                     )
@@ -224,7 +174,7 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                     data={
                         "decisions": parse_hedge_fund_response(result.get("messages", [])[-1].content),
                         "analyst_signals": result.get("data", {}).get("analyst_signals", {}),
-                        "current_prices": result.get("data", {}).get("current_prices", {}),
+                        "current_prices": result.get("data", {}).get("current_prices", {})
                     }
                 )
                 yield final_data.to_sse()
@@ -269,10 +219,8 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
             api_key_service = ApiKeyService(db)
             request_data.api_keys = api_key_service.get_api_keys_dict()
 
-        # Convert model_provider to string if it's an enum
-        model_provider = request_data.model_provider
-        if hasattr(model_provider, "value"):
-            model_provider = model_provider.value
+        # Safely convert model_provider to string
+        model_provider = get_model_provider_value(request_data.model_provider)
 
         # Create the portfolio (same as /run endpoint)
         portfolio = create_portfolio(request_data.initial_capital, request_data.margin_requirement, request_data.tickers, request_data.portfolio_positions)
@@ -289,9 +237,9 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
             start_date=request_data.start_date,
             end_date=request_data.end_date,
             initial_capital=request_data.initial_capital,
-            model_name=request_data.model_name,
+            model_name=request_data.model_name or "gpt-4.1",
             model_provider=model_provider,
-            request=request_data,  # Pass the full request for agent-specific model access
+            request=request_data,
         )
 
         # Function to detect client disconnection
@@ -327,8 +275,6 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                     backtest_result = BacktestDayResult(**update["data"])
 
                     # Send the full day result data as JSON in the analysis field
-                    import json
-
                     analysis_data = json.dumps(update["data"])
 
                     event = ProgressUpdateEvent(agent="backtest", ticker=None, content=f"Completed {backtest_result.date} - Portfolio: ${backtest_result.portfolio_value:,.2f}", timestamp=None, analysis=analysis_data)

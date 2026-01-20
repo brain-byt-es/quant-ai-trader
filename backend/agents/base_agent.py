@@ -1,9 +1,7 @@
 from agents.base_alpha import AlphaModel
 from lean_bridge.contracts import Insight, InsightDirection
-from lean_bridge.context import AlgorithmContext
-from typing import List, Optional
+from typing import Optional
 from datetime import timedelta
-import json
 
 class PersonaAlphaModel(AlphaModel):
     def __init__(self, agent_id: str):
