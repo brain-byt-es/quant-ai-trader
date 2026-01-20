@@ -116,6 +116,7 @@ async def stream_analysis_ticker(ticker: str):
                         content = str(analysis)
 
                 payload = {
+                    "schema_version": "1.0",
                     "agent": display_name, 
                     "ticker": ticker,
                     "content": content, 
@@ -123,7 +124,12 @@ async def stream_analysis_ticker(ticker: str):
                     "score": score, 
                     "confidence": confidence,
                     "magnitude": magnitude,
-                    "timestamp": timestamp
+                    "timestamp": timestamp,
+                    # Placeholders for future enriched DTOs
+                    "insight": None,
+                    "target": None,
+                    "risk": None,
+                    "execution": None
                 }
                 loop.call_soon_threadsafe(progress_queue.put_nowait, f"data: {json.dumps(payload)}\n\n")
 
