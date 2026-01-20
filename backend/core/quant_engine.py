@@ -242,7 +242,6 @@ def quant_engine_node(state: Dict[str, Any]):
         pcm.on_securities_changed(None, {"removed": removed_tickers})
 
     # Emit progress for universe selection if screening occurred
-// ...
     if "universe_selection_result" in data:
         res = data["universe_selection_result"]
         progress.update_status(
