@@ -14,18 +14,14 @@ class AgentDebate(BaseModel):
     @classmethod
     def map_synonyms(cls, data: Any) -> Any:
         """
-        Institutional Guardrail: Map common LLM synonym keys to our strict schema.
-        Handles cases where agents return 'verdict' instead of 'signal'.
+        Institutional Guardrail: Map common LLM synonym keys and handle type mismatches.
         """
         if not isinstance(data, dict):
             return data
             
-        # 1. Look for common root keys if nested (LLMs sometimes wrap in a ticker key)
-        # If the dict has exactly one key and it matches a ticker pattern (all caps, 1-5 chars), 
-        # or if it has an 'analysis' or 'evaluation' key, flatten it.
+        # 1. Flatten nested wrappers
         for wrapper in ["analysis", "evaluation", "valuation", "checklist"]:
             if wrapper in data and isinstance(data[wrapper], dict):
-                # Merge the nested data into the top level
                 for k, v in data[wrapper].items():
                     if k not in data:
                         data[k] = v
@@ -44,14 +40,23 @@ class AgentDebate(BaseModel):
                     data["style_rationale"] = str(data[key])
                     break
                     
-        # 4. Handle 'confidence' synonyms
-        if "confidence" not in data:
+        # 4. Handle 'confidence' strings (e.g., "High", "Medium", "Low")
+        conf_val = data.get("confidence")
+        if isinstance(conf_val, str):
+            mapping = {
+                "high": 0.9, "very high": 0.95, "strong": 0.85,
+                "medium": 0.5, "moderate": 0.5, "fair": 0.5,
+                "low": 0.2, "weak": 0.1, "very low": 0.05
+            }
+            data["confidence"] = mapping.get(conf_val.lower(), 0.5)
+        elif not isinstance(conf_val, (int, float)):
+            # Handle 'score' synonym if confidence is missing or weird type
             for key in ["Confidence", "score"]:
                 if key in data and isinstance(data[key], (int, float)):
                     data["confidence"] = float(data[key])
                     break
                     
-        # 5. Default persona_id if missing
+        # 5. Default persona_id
         if "persona_id" not in data:
             data["persona_id"] = "unknown"
             

@@ -1,5 +1,4 @@
 // Define the base URL for the API
-// In development, we use the Next.js proxy (/api/py) which forwards to localhost:8000
 const BASE_URL = "/api/py";
 
 export class ApiClient {
@@ -71,9 +70,16 @@ export class ApiClient {
     }>(`/analysis/factors/${ticker}`);
   }
 
-  public streamAnalysis(ticker: string): EventSource {
-    const url = `${this.baseUrl}/analysis/stream/${ticker}`;
-    return new EventSource(url);
+  public streamAnalysis(ticker: string, market?: string, k?: number): EventSource {
+    const params = new URLSearchParams();
+    if (market) params.append("market", market);
+    if (k) params.append("k", k.toString());
+    
+    const queryString = params.toString();
+    const url = `${this.baseUrl}/analysis/stream/${ticker}${queryString ? `?${queryString}` : ""}`;
+    
+    console.log(`ApiClient: Opening stream to ${url}`);
+    return new EventSource(url, { withCredentials: true });
   }
 
   public async triggerKillSwitch() {
@@ -82,7 +88,6 @@ export class ApiClient {
     });
   }
 
-  // Health check for the backend
   public async getHealth() {
     return this.fetch<{ status: string; services: Record<string, string> }>("/health");
   }

@@ -134,9 +134,10 @@ export default function ExecutionTerminal() {
         });
         // Clear local state
         useUniverseStore.getState().setPositions([]);
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred during liquidation.";
         toast.error("KILL SWITCH FAILED", {
-          description: error.message || "An unexpected error occurred during liquidation.",
+          description: errorMessage,
         });
       } finally {
         setIsLiquidating(false);

@@ -75,7 +75,7 @@ class QuantEngine:
 
         df = pd.DataFrame(raw_data)
 
-        # 2. Z-Score Normalization (Standard for LEAN Pipelines)
+        # 2. Z-Score Normalization
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         z_score_df = df.copy()
         for col in numeric_cols:
@@ -90,7 +90,6 @@ class QuantEngine:
             ticker = str(row["ticker"])
             orig_row = df[df["ticker"] == ticker].iloc[0]
             
-            # Pack metrics and z-scores
             metrics_dict = {str(k): float(v) if pd.notnull(v) else 0.0 for k, v in orig_row.items() if str(k) != "ticker"}
             z_scores_dict = {str(k): float(v) if pd.notnull(v) else 0.0 for k, v in row.items() if str(k).endswith("_z")}
             
@@ -104,24 +103,21 @@ class QuantEngine:
 
     def _calculate_ticker_metrics(self, ticker: str) -> Optional[Dict[str, float]]:
         try:
-            # 1. Price Data
             prices_df = get_price_data(ticker, self.start_date, self.end_date)
             if prices_df.empty:
                 return None
 
-            # 2. Fundamental Data
             financials = get_financial_metrics(ticker, self.end_date, limit=1)
             line_items = search_line_items(ticker, [
                 "revenue", "total_assets", "total_current_assets", 
                 "total_current_liabilities", "retained_earnings", "ebit", 
-                "total_liabilities", "research_and_development"
+                "total_liabilities"
             ], self.end_date, limit=1)
             market_cap = get_market_cap(ticker, self.end_date)
 
             latest_fin = financials[0] if financials else None
             latest_line = line_items[0] if line_items else None
 
-            # --- Momentum Cluster ---
             prices = prices_df["close"]
             returns = prices.pct_change().dropna()
             
@@ -133,22 +129,18 @@ class QuantEngine:
             ma_200 = prices.rolling(window=200).mean().iloc[-1] if len(prices) >= 200 else prices.mean()
             dist_200ma = float((prices.iloc[-1] / ma_200) - 1)
 
-            # --- Risk Cluster ---
             max_dd = calculate_max_drawdown(prices)
             var_95 = calculate_var(returns)
 
-            # --- Value Cluster ---
             pe = getattr(latest_fin, "price_to_earnings_ratio", 0.0) or 0.0
             pb = getattr(latest_fin, "price_to_book_ratio", 0.0) or 0.0
             ev_ebitda = getattr(latest_fin, "enterprise_value_to_ebitda_ratio", 0.0) or 0.0
             fcf_yield = getattr(latest_fin, "free_cash_flow_yield", 0.0) or 0.0
 
-            # --- Quality Cluster ---
             roe = getattr(latest_fin, "return_on_equity", 0.0) or 0.0
             roic = getattr(latest_fin, "return_on_invested_capital", 0.0) or 0.0
             debt_equity = getattr(latest_fin, "debt_to_equity", 0.0) or 0.0
 
-            # Altman Z-Score Restoration
             altman_z = 0.0
             if latest_line:
                 ta = float(getattr(latest_line, "total_assets", 0) or 0)
@@ -168,7 +160,6 @@ class QuantEngine:
                     e = rev / ta
                     altman_z = 1.2 * a + 1.4 * b + 3.3 * c + 0.6 * d + 1.0 * e
 
-            # --- Growth Cluster ---
             rev_growth = getattr(latest_fin, "revenue_growth", 0.0) or 0.0
             eps_growth = getattr(latest_fin, "earnings_growth", 0.0) or 0.0
 
@@ -195,16 +186,41 @@ class QuantEngine:
             return None
 
 
-def quant_engine_node(state: Dict[str, Any]):
-    """LangGraph node for the Quant Engine."""
+def universe_selection_node(state: Dict[str, Any]):
+    """Fast node to determine active tickers."""
     data = state["data"]
+    usm_data = {
+        "market": data.get("market") or data.get("portfolio", {}).get("market"),
+        "k": data.get("k") or data.get("portfolio", {}).get("k"),
+        "tickers": data.get("tickers", [])
+    }
     
     usm = UniverseSelectionModel()
-    active_symbols = usm.select_symbols(datetime.now(UTC), data)
+    active_symbols = usm.select_symbols(datetime.now(UTC), usm_data)
     data["tickers"] = active_symbols 
     
+    if "universe_selection_result" in usm_data:
+        res = usm_data["universe_selection_result"]
+        data["universe_selection_result"] = res
+        progress.update_status(
+            "system", 
+            None, 
+            f"Universe Selected: {res['base_count']} base -> {res['eligible_count']} eligible -> {len(active_symbols)} selected",
+            analysis=json.dumps(res)
+        )
+    return {"data": data}
+
+
+def factor_calculation_node(state: Dict[str, Any]):
+    """Slow node to calculate institutional metrics (background)."""
+    data = state["data"]
+    active_symbols = data.get("tickers", [])
+    
+    if not active_symbols:
+        return {"data": data}
+
     engine = QuantEngine(active_symbols, data["start_date"], data["end_date"])
     scorecard = engine.run()
 
-    state["data"]["quant_scorecard"] = scorecard
-    return {"data": state["data"]}
+    data["quant_scorecard"] = scorecard
+    return {"data": data}

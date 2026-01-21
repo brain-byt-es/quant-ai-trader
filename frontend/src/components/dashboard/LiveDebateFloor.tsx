@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
 import { useUniverseStore } from "@/store/useUniverseStore";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -54,20 +53,19 @@ export function LiveDebateFloor({ ticker = "GLOBAL", market, k }: LiveDebateFloo
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const updateTicker = useUniverseStore((state) => state.updateTicker);
 
-  // Use useMemo for the URL to prevent unnecessary reconnections
   const streamUrl = useMemo(() => {
-    let url = `/api/py/analysis/stream/${ticker}`;
+    const baseUrl = `/api/py/analysis/stream/${ticker}`;
     const params = new URLSearchParams();
     if (market) params.append("market", market);
     if (k) params.append("k", k.toString());
     
     const queryString = params.toString();
-    return queryString ? `${url}?${queryString}` : url;
+    return queryString ? `${baseUrl}?${queryString}` : baseUrl;
   }, [ticker, market, k]);
 
   useEffect(() => {
     console.log(`Establishing SSE Connection to ${streamUrl}...`);
-    const eventSource = new EventSource(streamUrl); 
+    const eventSource = new EventSource(streamUrl, { withCredentials: true }); 
 
     eventSource.onopen = () => {
       console.log("SSE Connection Opened");
@@ -75,46 +73,23 @@ export function LiveDebateFloor({ ticker = "GLOBAL", market, k }: LiveDebateFloo
       setSchemaError(null);
     };
 
-    eventSource.onmessage = (event) => {
+    // --- Institutional Fix: Listen for NAMED events from the backend ---
+    
+    const handleMessage = (event: MessageEvent) => {
       if (event.data === "[DONE]") {
-        console.log("SSE Stream Complete");
         setIsConnected(false);
         return;
       }
 
       try {
         const rawData = JSON.parse(event.data);
-        
-        // Handle specialized events first
-        if (rawData.type === "universe") {
-          useUniverseStore.getState().setScreenerResults(
-            { base: rawData.base_count, eligible: rawData.eligible_count, selected: rawData.selected_symbols.length },
-            useUniverseStore.getState().rankedCandidates
-          );
-          return;
-        }
-        
-        if (rawData.type === "ranking") {
-          useUniverseStore.getState().setScreenerResults(
-            useUniverseStore.getState().universeCounts,
-            rawData.top_k
-          );
-          return;
-        }
-
         const result = SSEEventSchema.safeParse(rawData);
         
-        if (!result.success) {
-          console.error("SSE Validation Error:", result.error);
-          return;
-        }
+        if (!result.success) return;
 
         const data = result.data;
-        const logTicker = data.ticker || ticker || "SYSTEM";
+        const logTicker = data.ticker || "SYSTEM";
         const agentName = data.agent || "UNKNOWN";
-        
-        const confidence = data.confidence || 0;
-        const magnitude = data.magnitude || 0;
 
         if (data.score || data.signal) {
           updateTicker(logTicker, {
@@ -130,8 +105,8 @@ export function LiveDebateFloor({ ticker = "GLOBAL", market, k }: LiveDebateFloo
           agentId: agentName,
           badge: AGENTS[agentName as keyof typeof AGENTS]?.badge || "ALPHA MODEL",
           signal: (data.signal || "NEUTRAL").toUpperCase() as "BULLISH" | "BEARISH" | "NEUTRAL",
-          confidence: confidence,
-          magnitude: magnitude,
+          confidence: data.confidence || 0,
+          magnitude: data.magnitude || 0,
           rationale: data.content || "Processing...",
         };
         
@@ -140,10 +115,32 @@ export function LiveDebateFloor({ ticker = "GLOBAL", market, k }: LiveDebateFloo
           if (isDuplicate) return prev;
           return [...prev.slice(-199), newLog];
         });
-      } catch {
-        // Skip pings/comments
-      }
+      } catch {}
     };
+
+    const handleUniverse = (event: MessageEvent) => {
+      console.log("SSE Universe Event:", event.data);
+      const data = JSON.parse(event.data);
+      useUniverseStore.getState().setScreenerResults(
+        { base: data.base_count, eligible: data.eligible_count, selected: data.selected_symbols.length },
+        useUniverseStore.getState().rankedCandidates
+      );
+    };
+
+    const handleRanking = (event: MessageEvent) => {
+      console.log("SSE Ranking Event:", event.data);
+      const data = JSON.parse(event.data);
+      useUniverseStore.getState().setScreenerResults(
+        useUniverseStore.getState().universeCounts,
+        data.top_k
+      );
+    };
+
+    // Add listeners for both generic and named events
+    eventSource.addEventListener("message", handleMessage);
+    eventSource.addEventListener("progress", handleMessage);
+    eventSource.addEventListener("universe", handleUniverse);
+    eventSource.addEventListener("ranking", handleRanking);
 
     eventSource.onerror = (err) => {
       console.error("SSE Connection Error:", err);
@@ -153,9 +150,13 @@ export function LiveDebateFloor({ ticker = "GLOBAL", market, k }: LiveDebateFloo
 
     return () => {
       console.log("Closing SSE Connection");
+      eventSource.removeEventListener("message", handleMessage);
+      eventSource.removeEventListener("progress", handleMessage);
+      eventSource.removeEventListener("universe", handleUniverse);
+      eventSource.removeEventListener("ranking", handleRanking);
       eventSource.close();
     };
-  }, [streamUrl, updateTicker, ticker]);
+  }, [streamUrl, updateTicker]);
 
 
   useEffect(() => {
